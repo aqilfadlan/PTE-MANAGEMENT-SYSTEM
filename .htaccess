@@ -1,0 +1,12 @@
+Options -Indexes
+
+# Block direct access to sensitive directories
+<FilesMatch "\.(env|sql|md)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^$ /src/Auth/login.php [L,R=302]
+</IfModule>

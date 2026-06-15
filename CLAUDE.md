@@ -1,0 +1,551 @@
+# CLAUDE.md — Tuition Management System
+
+This file provides full project context for Claude across all sessions. Read this before writing any code.
+
+---
+
+## Project Overview
+
+A web-based tuition centre management system built for Malaysian tuition centres. Covers user role management, class scheduling, student enrolment, attendance tracking, invoicing, and payment recording.
+
+**Project directory:** `C:\xampp\htdocs\PTE-MANAGEMENT-SYSTEM`
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | PHP (native, no framework) |
+| Database | Oracle 23ai Free |
+| DB Driver | `ext-oci8` via `php_oci8_19.dll` |
+| Frontend | HTML + Tailwind CSS (inline via CDN) |
+| Icons | Tabler Icons (webfont via CDN) |
+| Theme | Indigo & Soft Grey |
+| Query style | Raw SQL only — no ORM, no query builder |
+| Package manager | pnpm (frontend assets if needed) |
+
+> No Laravel. No Eloquent. No migrations. All DDL is written directly in Oracle SQL.
+
+---
+
+## Database
+
+### Connection Details (local dev)
+
+```
+Host     : localhost
+Service  : FREEPDB1
+DSN      : localhost/FREEPDB1
+Username : pte_db
+Password : oracle
+Driver   : OCI8
+```
+
+### PHP Connection Pattern
+
+Always use this pattern for DB connections:
+
+```php
+<?php
+function getConnection(): \OCI8\Connection
+{
+    $conn = oci_connect(
+        $_ENV['DB_USERNAME'],
+        $_ENV['DB_PASSWORD'],
+        $_ENV['DB_DSN']   // e.g. localhost/FREEPDB1
+    );
+
+    if (!$conn) {
+        $e = oci_error();
+        throw new \RuntimeException('Oracle connection failed: ' . $e['message']);
+    }
+
+    return $conn;
+}
+```
+
+### Raw SQL Pattern
+
+Always use bind variables — never interpolate user input into SQL.
+
+```php
+<?php
+$conn = getConnection();
+
+$sql = 'SELECT s.student_id, s.fullname, s.status
+        FROM student s
+        WHERE s.grade_id = :grade_id
+        AND s.status = :status';
+
+$stmt = oci_parse($conn, $sql);
+oci_bind_by_name($stmt, ':grade_id', $gradeId);
+oci_bind_by_name($stmt, ':status',   $status);
+oci_execute($stmt);
+
+$rows = [];
+while ($row = oci_fetch_assoc($stmt)) {
+    $rows[] = $row;
+}
+
+oci_free_statement($stmt);
+oci_close($conn);
+```
+
+### INSERT with Sequence
+
+```php
+<?php
+$sql = 'INSERT INTO student (student_id, fullname, ic_number, phone, status, grade_id, parent_id, created_at)
+        VALUES (SEQ_STUDENT.NEXTVAL, :fullname, :ic_number, :phone, :status, :grade_id, :parent_id, SYSTIMESTAMP)';
+
+$stmt = oci_parse($conn, $sql);
+oci_bind_by_name($stmt, ':fullname',  $fullname);
+oci_bind_by_name($stmt, ':ic_number', $icNumber);
+oci_bind_by_name($stmt, ':phone',     $phone);
+oci_bind_by_name($stmt, ':status',    $status);
+oci_bind_by_name($stmt, ':grade_id',  $gradeId);
+oci_bind_by_name($stmt, ':parent_id', $parentId);
+oci_execute($stmt);
+oci_commit($conn);
+```
+
+### Oracle-specific Rules
+
+- Use `SYSTIMESTAMP` not `NOW()` or `CURRENT_TIMESTAMP`
+- Use `DUAL` for expression-only selects: `SELECT SEQ_USER.NEXTVAL FROM DUAL`
+- Use `VARCHAR2` not `VARCHAR`
+- Use `NUMBER` not `INT` or `BIGINT`
+- `USER` is a reserved keyword — the users table is named `USERS`
+- Subtype tables: `OWNER_PROFILE`, `ADMIN_PROFILE`, `TUTOR_PROFILE`
+- Pagination uses `OFFSET x ROWS FETCH NEXT y ROWS ONLY` (Oracle 12c+)
+- Always `oci_commit()` after INSERT / UPDATE / DELETE
+
+---
+
+## Database Schema
+
+### Tables & Sequences
+
+| Table | Sequence | PK |
+|---|---|---|
+| USERS | SEQ_USER | USER_ID |
+| OWNER_PROFILE | — | USER_ID (FK) |
+| ADMIN_PROFILE | — | USER_ID (FK) |
+| TUTOR_PROFILE | — | USER_ID (FK) |
+| PASSWORD_RESET_TOKEN | SEQ_TOKEN | TOKEN_ID |
+| SUBJECT | SEQ_SUBJECT | SUBJECT_ID |
+| GRADE | SEQ_GRADE | GRADE_ID |
+| PARENT | SEQ_PARENT | PARENT_ID |
+| STUDENT | SEQ_STUDENT | STUDENT_ID |
+| CLASS | SEQ_CLASS | CLASS_ID |
+| CLASS_SCHEDULE | SEQ_SCHEDULE | SCHEDULE_ID |
+| CLASS_SESSION | SEQ_SESSION | SESSION_ID |
+| STUDENT_ATTENDANCE | SEQ_ATTENDANCE | ATTENDANCE_ID |
+| CLASS_STUDENT | — | (CLASS_ID, STUDENT_ID) composite PK |
+| INVOICE | SEQ_INVOICE | INVOICE_ID |
+| INVOICE_ITEM | SEQ_INVOICE_ITEM | ITEM_ID |
+| PAYMENT | SEQ_PAYMENT | PAYMENT_ID |
+
+### Key Relationships
+
+- `USERS` has a self-referencing FK `SUPERVISOR_ID` (supervise hierarchy)
+- `USERS` is specialised into `OWNER_PROFILE`, `ADMIN_PROFILE`, `TUTOR_PROFILE` (ISA pattern — subtype table shares the same PK as USERS)
+- `CLASS_STUDENT` is the M:N bridge between `CLASS` and `STUDENT`
+- `CLASS_SESSION` is generated from `CLASS_SCHEDULE` (template → instance)
+- `INVOICE_ITEM` links `INVOICE`, `STUDENT`, and `CLASS` together
+- One `INVOICE` per parent per billing month (enforced by unique constraint)
+
+### ENUM-style CHECK Constraints
+
+| Table | Column | Allowed Values |
+|---|---|---|
+| USERS | ROLE | `'OWNER'`, `'ADMIN'`, `'TUTOR'` |
+| STUDENT | STATUS | `'ACTIVE'`, `'INACTIVE'` |
+| CLASS | STATUS | `'ACTIVE'`, `'INACTIVE'` |
+| CLASS_SCHEDULE | DAYSOFWEEK | `'MON'`,`'TUE'`,`'WED'`,`'THU'`,`'FRI'`,`'SAT'`,`'SUN'` |
+| CLASS_SESSION | STATUS | `'SCHEDULED'`, `'COMPLETED'`, `'CANCELLED'` |
+| STUDENT_ATTENDANCE | STATUS | `'PRESENT'`, `'ABSENT'`, `'LATE'` |
+| INVOICE | STATUS | `'UNPAID'`, `'PARTIAL'`, `'PAID'`, `'OVERDUE'` |
+| PAYMENT | METHOD | `'CASH'`, `'BANK_TRANSFER'`, `'ONLINE'`, `'CHEQUE'` |
+
+---
+
+## Project Structure
+
+```
+TUITION-MANAGEMENT/
+├── CLAUDE.md
+├── .env
+├── index.php
+├── config/
+│   └── database.php          # getConnection() helper
+├── public/
+│   ├── css/                  # compiled or CDN Tailwind
+│   └── js/
+├── src/
+│   ├── Auth/
+│   │   ├── login.php
+│   │   ├── logout.php
+│   │   └── reset-password.php
+│   ├── Dashboard/
+│   │   └── index.php
+│   ├── Users/
+│   │   ├── index.php
+│   │   ├── create.php
+│   │   ├── edit.php
+│   │   └── delete.php
+│   ├── Students/
+│   │   ├── index.php
+│   │   ├── create.php
+│   │   ├── edit.php
+│   │   ├── show.php
+│   │   └── enrol.php
+│   ├── Parents/
+│   │   ├── index.php
+│   │   ├── create.php
+│   │   └── edit.php
+│   ├── Classes/
+│   │   ├── index.php
+│   │   ├── create.php
+│   │   ├── edit.php
+│   │   └── show.php
+│   ├── Schedule/
+│   │   ├── index.php
+│   │   └── generate.php      # bulk-generate CLASS_SESSION from CLASS_SCHEDULE
+│   ├── Sessions/
+│   │   ├── index.php
+│   │   └── show.php
+│   ├── Attendance/
+│   │   ├── take.php          # mark attendance per session
+│   │   └── report.php
+│   ├── Subjects/
+│   │   └── index.php
+│   ├── Grades/
+│   │   └── index.php
+│   ├── Invoices/
+│   │   ├── index.php
+│   │   ├── generate.php      # generate monthly invoice per parent
+│   │   └── show.php
+│   └── Payments/
+│       ├── record.php
+│       └── history.php
+├── views/
+│   ├── layout/
+│   │   ├── header.php        # nav, Tailwind CDN + Tabler Icons CDN
+│   │   ├── sidebar.php
+│   │   └── footer.php
+│   └── partials/
+│       ├── flash.php         # success/error flash messages
+│       └── pagination.php
+├── sql/
+│   └── ddl.sql               # full Oracle DDL (tables, sequences, indexes)
+└── .htaccess
+```
+
+---
+
+## Frontend Rules
+
+- **Tailwind CSS via CDN** — no build step, no PostCSS, no config file
+  ```html
+  <script src="https://cdn.tailwindcss.com"></script>
+  ```
+- **Tabler Icons via CDN** — webfont, outline style only
+  ```html
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont/dist/tabler-icons.min.css">
+  ```
+  Usage: `<i class="ti ti-{icon-name}"></i>`
+- All styling is **inline Tailwind utility classes** — no custom CSS files unless unavoidable
+- No JavaScript framework — vanilla JS only for interactive bits (modals, toggles)
+- No React, Vue, Alpine, or Livewire
+- Keep HTML in `.php` files — no separate template engine (no Blade, no Twig)
+
+### Theme — Indigo & Soft Grey
+
+| Role | Tailwind class | Hex |
+|---|---|---|
+| Primary (sidebar, buttons) | `bg-indigo-800` | `#3730a3` |
+| Primary hover | `bg-indigo-700` | `#4338ca` |
+| Primary light (badges, bg) | `bg-indigo-100` | `#e0e7ff` |
+| Primary text on light | `text-indigo-800` | `#3730a3` |
+| Accent (highlights) | `bg-indigo-500` | `#6366f1` |
+| Page background | `bg-slate-100` | `#f1f5f9` |
+| Card / surface | `bg-white` | `#ffffff` |
+| Body text | `text-slate-800` | `#1e293b` |
+| Muted text | `text-slate-500` | `#64748b` |
+| Border | `border-slate-200` | `#e2e8f0` |
+
+### Status Badge Colours
+
+| Status | Classes |
+|---|---|
+| Active / Present / Paid / Completed | `bg-green-100 text-green-700` |
+| Inactive / Absent / Cancelled | `bg-red-100 text-red-700` |
+| Late / Partial / Scheduled | `bg-yellow-100 text-yellow-700` |
+| Overdue | `bg-orange-100 text-orange-700` |
+| Unpaid | `bg-slate-100 text-slate-600` |
+
+### Common Tabler Icons for This System
+
+| Context | Icon class |
+|---|---|
+| Dashboard | `ti ti-layout-dashboard` |
+| Users / Tutors | `ti ti-users` |
+| Students | `ti ti-school` |
+| Parents | `ti ti-user-heart` |
+| Classes | `ti ti-books` |
+| Subjects | `ti ti-book` |
+| Grades | `ti ti-award` |
+| Schedule | `ti ti-calendar-time` |
+| Sessions | `ti ti-calendar-event` |
+| Attendance | `ti ti-clipboard-check` |
+| Invoices | `ti ti-file-invoice` |
+| Payments | `ti ti-cash` |
+| Reports | `ti ti-chart-bar` |
+| Add / Create | `ti ti-plus` |
+| Edit | `ti ti-pencil` |
+| Delete | `ti ti-trash` |
+| View / Show | `ti ti-eye` |
+| Search | `ti ti-search` |
+| Logout | `ti ti-logout` |
+| Settings | `ti ti-settings` |
+| Back | `ti ti-arrow-left` |
+| Success / Check | `ti ti-circle-check` |
+| Error / Alert | `ti ti-alert-circle` |
+
+### Layout Pattern
+
+Every page includes the shared layout:
+
+```php
+<?php
+session_start();
+require_once '../../config/database.php';
+require_once '../../views/layout/header.php';
+require_once '../../views/layout/sidebar.php';
+?>
+
+<main class="ml-64 p-8">
+    <!-- page content -->
+</main>
+
+<?php require_once '../../views/layout/footer.php'; ?>
+```
+
+### UI Conventions
+
+- Sidebar is fixed left, `w-64`, background `bg-indigo-800 text-white`
+- Active sidebar link: `bg-indigo-700`
+- Main content has `ml-64` offset, background `bg-slate-100 min-h-screen`
+- Cards: `bg-white rounded-lg shadow-sm border border-slate-200 p-6`
+- Tables: `w-full text-sm`, thead `bg-slate-50 text-slate-500 uppercase text-xs`, rows `border-b border-slate-100 hover:bg-slate-50`
+- Button primary: `bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2`
+- Button secondary: `bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg hover:bg-indigo-200 inline-flex items-center gap-2`
+- Button danger: `bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 inline-flex items-center gap-2`
+- Form inputs: `border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500`
+- Form labels: `block text-sm font-medium text-slate-700 mb-1`
+- Page title: `text-xl font-semibold text-slate-800`
+- Section heading: `text-sm font-medium text-slate-500 uppercase tracking-wide`
+- Flash success: `bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3`
+- Flash error: `bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3`
+
+---
+
+## Auth & Session
+
+- PHP native sessions (`session_start()`)
+- On login, store in `$_SESSION`: `user_id`, `fullname`, `role`
+- Role check at top of every protected page:
+
+```php
+<?php
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    header('Location: /src/Auth/login.php');
+    exit;
+}
+if ($_SESSION['role'] !== 'ADMIN') {
+    header('Location: /src/Dashboard/index.php');
+    exit;
+}
+```
+
+- Passwords stored as `password_hash($password, PASSWORD_BCRYPT)`
+- Verified with `password_verify($input, $hash)`
+
+---
+
+## Role Access Matrix
+
+| Module | OWNER | ADMIN | TUTOR |
+|---|---|---|---|
+| Dashboard | ✓ | ✓ | ✓ |
+| User management | ✓ | — | — |
+| Subject & Grade | ✓ | ✓ | — |
+| Class management | ✓ | ✓ | — |
+| Schedule & Sessions | ✓ | ✓ | ✓ (view own) |
+| Attendance (take) | — | — | ✓ |
+| Attendance (view) | ✓ | ✓ | ✓ (own classes) |
+| Student management | ✓ | ✓ | — |
+| Parent management | ✓ | ✓ | — |
+| Invoicing | ✓ | ✓ | — |
+| Payments | ✓ | ✓ | — |
+| Reports | ✓ | — | — |
+
+---
+
+## Coding Conventions
+
+### PHP
+
+- Files use `<?php` opening tag, no closing `?>` on pure PHP files
+- Use `require_once` for includes, never `include`
+- All DB calls wrapped in try/catch, always free statements and close connections
+- POST forms use `$_POST`, GET params use `$_GET` — always validate and sanitise
+- Use `htmlspecialchars($value, ENT_QUOTES, 'UTF-8')` when echoing user data to HTML
+- Config values from `.env` loaded via a simple `parse_ini_file('.env')` or manual `$_ENV` at bootstrap
+
+### SQL
+
+- All SQL in UPPERCASE keywords
+- Always alias tables: `FROM student s`, `JOIN class c ON ...`
+- Use bind variables for all user-supplied values (`:param_name` syntax)
+- Column names in queries should match the DDL exactly (Oracle is case-insensitive but keep consistent)
+- Never `SELECT *` in production queries — always name columns explicitly
+
+### Naming
+
+- PHP files: `kebab-case.php`
+- PHP functions: `camelCase()`
+- PHP variables: `$camelCase`
+- SQL table names: `UPPER_SNAKE_CASE` (matches DDL)
+- SQL column names: `UPPER_SNAKE_CASE`
+- HTML IDs/classes: `kebab-case`
+
+---
+
+## Environment File (`.env`)
+
+```env
+DB_USERNAME=hr
+DB_PASSWORD=oracle
+DB_DSN=localhost/FREEPDB1
+
+APP_NAME=TuitionMS
+APP_ENV=development
+APP_DEBUG=true
+APP_URL=http://localhost
+```
+
+---
+
+## Common Queries Reference
+
+### Get all students with grade and parent info
+```sql
+SELECT s.student_id, s.fullname, s.ic_number, s.phone, s.status,
+       g.name AS grade_name, g.grade_level,
+       p.fullname AS parent_name, p.phone AS parent_phone
+FROM   student s
+JOIN   grade  g ON g.grade_id  = s.grade_id
+JOIN   parent p ON p.parent_id = s.parent_id
+ORDER  BY s.fullname
+```
+
+### Get classes with subject and tutor
+```sql
+SELECT c.class_id, c.name, c.fee, c.status,
+       s.name AS subject_name, s.code AS subject_code,
+       g.name AS grade_name,
+       u.fullname AS tutor_name
+FROM   class   c
+JOIN   subject s ON s.subject_id = c.subject_id
+JOIN   grade   g ON g.grade_id   = c.grade_id
+JOIN   users   u ON u.user_id    = c.user_id
+ORDER  BY c.name
+```
+
+### Get sessions for a class with schedule info
+```sql
+SELECT cs.session_id, cs.session_date, cs.start_time, cs.end_time, cs.status,
+       u.fullname AS conducted_by
+FROM   class_session cs
+JOIN   users         u  ON u.user_id    = cs.user_id
+WHERE  cs.class_id = :class_id
+ORDER  BY cs.session_date DESC
+```
+
+### Get attendance for a session
+```sql
+SELECT sa.attendance_id, sa.status,
+       s.student_id, s.fullname AS student_name
+FROM   student_attendance sa
+JOIN   student            s ON s.student_id = sa.student_id
+WHERE  sa.session_id = :session_id
+ORDER  BY s.fullname
+```
+
+### Get invoices for a parent with payment totals
+```sql
+SELECT i.invoice_id, i.billing_month, i.billing_year,
+       i.total_amount, i.status, i.due_date,
+       NVL(SUM(pay.amount_paid), 0) AS total_paid,
+       i.total_amount - NVL(SUM(pay.amount_paid), 0) AS balance
+FROM   invoice i
+LEFT   JOIN payment pay ON pay.invoice_id = i.invoice_id
+WHERE  i.parent_id = :parent_id
+GROUP  BY i.invoice_id, i.billing_month, i.billing_year,
+          i.total_amount, i.status, i.due_date
+ORDER  BY i.billing_year DESC, i.billing_month DESC
+```
+
+### Pagination template
+```sql
+SELECT *
+FROM  (
+    SELECT t.*, ROWNUM AS rn
+    FROM   (
+        -- your base query with ORDER BY here
+        SELECT student_id, fullname FROM student ORDER BY fullname
+    ) t
+    WHERE  ROWNUM <= :offset + :limit
+)
+WHERE rn > :offset
+```
+
+Or using Oracle 12c+ syntax (preferred on Oracle 23ai):
+```sql
+SELECT student_id, fullname
+FROM   student
+ORDER  BY fullname
+OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
+```
+
+---
+
+## Pages & Features Summary
+
+| Page | Path | Description |
+|---|---|---|
+| Login | `/src/Auth/login.php` | Email + password, sets session |
+| Forgot Password | `/src/Auth/forgot.php` | Generates PASSWORD_RESET_TOKEN |
+| Reset Password | `/src/Auth/reset-password.php` | Validates token, updates password |
+| Dashboard | `/src/Dashboard/index.php` | Role-specific KPI summary |
+| User List | `/src/Users/index.php` | Manage Owner/Admin/Tutor accounts |
+| Subject List | `/src/Subjects/index.php` | CRUD for subjects |
+| Grade List | `/src/Grades/index.php` | CRUD for grades |
+| Class List | `/src/Classes/index.php` | All classes, filter by status |
+| Class Detail | `/src/Classes/show.php` | Enrolled students, schedules |
+| Generate Sessions | `/src/Schedule/generate.php` | Bulk-create CLASS_SESSION from schedules |
+| Session List | `/src/Sessions/index.php` | Calendar/table of sessions |
+| Take Attendance | `/src/Attendance/take.php` | Mark Present/Absent/Late per session |
+| Attendance Report | `/src/Attendance/report.php` | Filter by class or student |
+| Student List | `/src/Students/index.php` | All students with search/filter |
+| Student Profile | `/src/Students/show.php` | Attendance + invoice history |
+| Enrol Student | `/src/Students/enrol.php` | Add/remove from CLASS_STUDENT |
+| Parent List | `/src/Parents/index.php` | All parents |
+| Invoice List | `/src/Invoices/index.php` | Filter by status, month, parent |
+| Generate Invoice | `/src/Invoices/generate.php` | Auto-create invoice + items from enrolments |
+| Invoice Detail | `/src/Invoices/show.php` | Line items + payment history |
+| Record Payment | `/src/Payments/record.php` | POST form, updates invoice status |
