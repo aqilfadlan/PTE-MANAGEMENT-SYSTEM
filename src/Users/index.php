@@ -36,6 +36,7 @@ try {
     $countSql  = "SELECT COUNT(*) AS total FROM USERS u $where";
     $countStmt = oci_parse($conn, $countSql);
     foreach ($params as $k => &$v) oci_bind_by_name($countStmt, $k, $v);
+    unset($v);
     oci_execute($countStmt);
     $total     = (int)oci_fetch_assoc($countStmt)['TOTAL'];
     $totalPages = ceil($total / $limit);
@@ -48,6 +49,7 @@ try {
              OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY";
     $stmt = oci_parse($conn, $sql);
     foreach ($params as $k => &$v) oci_bind_by_name($stmt, $k, $v);
+    unset($v);
     oci_bind_by_name($stmt, ':offset', $offset);
     oci_bind_by_name($stmt, ':limit',  $limit);
     oci_execute($stmt);

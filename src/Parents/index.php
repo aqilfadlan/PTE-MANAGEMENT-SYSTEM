@@ -31,19 +31,23 @@ try {
     $countSql  = "SELECT COUNT(*) AS total FROM PARENT p WHERE $where";
     $countStmt = oci_parse($conn, $countSql);
     foreach ($params as $k => &$v) oci_bind_by_name($countStmt, $k, $v);
+    unset($v);
     oci_execute($countStmt);
     $total      = (int)oci_fetch_assoc($countStmt)['TOTAL'];
     $totalPages = ceil($total / $limit);
     oci_free_statement($countStmt);
 
     $sql  = "SELECT p.parent_id, p.fullname, p.ic_number, p.email, p.phone,
-                    (SELECT COUNT(*) FROM STUDENT s WHERE s.parent_id = p.parent_id) AS student_count
+                    COUNT(s.student_id) AS student_count
              FROM   PARENT p
+             LEFT   JOIN STUDENT s ON s.parent_id = p.parent_id
              WHERE  $where
+             GROUP  BY p.parent_id, p.fullname, p.ic_number, p.email, p.phone
              ORDER  BY p.fullname
              OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY";
     $stmt = oci_parse($conn, $sql);
     foreach ($params as $k => &$v) oci_bind_by_name($stmt, $k, $v);
+    unset($v);
     oci_bind_by_name($stmt, ':offset', $offset);
     oci_bind_by_name($stmt, ':limit',  $limit);
     oci_execute($stmt);

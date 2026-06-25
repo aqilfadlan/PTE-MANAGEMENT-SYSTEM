@@ -8,45 +8,18 @@ if (isset($_SESSION['user_id'])) {
     exit;
 }
 
-$error   = '';
-$success = '';
-$token   = trim($_GET['token'] ?? '');
-$valid   = false;
-$userId  = null;
-
-if ($token === '') {
+// Must arrive here via verify-otp.php
+if (empty($_SESSION['reset_user_id']) || empty($_SESSION['reset_token'])) {
     header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/forgot.php');
     exit;
 }
 
-// Validate the token on every page load
-try {
-    $conn = getConnection();
+$error   = '';
+$success = '';
+$userId  = $_SESSION['reset_user_id'];
+$otp     = $_SESSION['reset_token'];
 
-    $sql  = "SELECT token_id, user_id
-             FROM   PASSWORD_RESET_TOKEN
-             WHERE  token = :token
-             AND    used = 0
-             AND    expires_at > SYSTIMESTAMP";
-    $stmt = oci_parse($conn, $sql);
-    oci_bind_by_name($stmt, ':token', $token);
-    oci_execute($stmt);
-    $row = oci_fetch_assoc($stmt);
-    oci_free_statement($stmt);
-
-    if ($row) {
-        $valid  = true;
-        $userId = $row['USER_ID'];
-    } else {
-        $error = 'This reset link is invalid or has expired.';
-    }
-
-    oci_close($conn);
-} catch (\RuntimeException $e) {
-    $error = 'Database error. Please try again.';
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password        = $_POST['password'] ?? '';
     $passwordConfirm = $_POST['password_confirm'] ?? '';
 
@@ -57,7 +30,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid) {
     } else {
         try {
             $conn = getConnection();
-            $hash = password_hash($password, PASSWORD_BCRYPT);
+
+            // Re-validate the token is still valid before committing the change
+            $chkSql  = "SELECT token_id FROM PASSWORD_RESET_TOKEN
+                        WHERE user_id = :user_id AND token = :otp
+                        AND used = 0 AND expires_at > SYSTIMESTAMP";
+            $chkStmt = oci_parse($conn, $chkSql);
+            oci_bind_by_name($chkStmt, ':user_id', $userId);
+            oci_bind_by_name($chkStmt, ':otp',     $otp);
+            oci_execute($chkStmt);
+            $valid = oci_fetch_assoc($chkStmt);
+            oci_free_statement($chkStmt);
+
+            if (!$valid) {
+                oci_close($conn);
+                // Token expired between verify and reset pages
+                unset($_SESSION['reset_user_id'], $_SESSION['reset_token']);
+                header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/forgot.php');
+                exit;
+            }
+
+            $hash    = password_hash($password, PASSWORD_BCRYPT);
 
             $updSql  = 'UPDATE USERS SET password_hash = :hash WHERE user_id = :user_id';
             $updStmt = oci_parse($conn, $updSql);
@@ -66,17 +59,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid) {
             oci_execute($updStmt);
             oci_free_statement($updStmt);
 
-            $markSql  = 'UPDATE PASSWORD_RESET_TOKEN SET used = 1 WHERE token = :token';
+            $markSql  = 'UPDATE PASSWORD_RESET_TOKEN SET used = 1
+                         WHERE user_id = :user_id AND token = :otp';
             $markStmt = oci_parse($conn, $markSql);
-            oci_bind_by_name($markStmt, ':token', $token);
+            oci_bind_by_name($markStmt, ':user_id', $userId);
+            oci_bind_by_name($markStmt, ':otp',     $otp);
             oci_execute($markStmt);
             oci_free_statement($markStmt);
 
             oci_commit($conn);
             oci_close($conn);
 
+            unset($_SESSION['reset_user_id'], $_SESSION['reset_token']);
             $success = 'Your password has been reset. You can now log in.';
-            $valid   = false;
+
         } catch (\RuntimeException $e) {
             $error = 'Database error. Please try again.';
         }
@@ -117,10 +113,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid) {
                 <i class="ti ti-circle-check text-base"></i>
                 <span><?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></span>
             </div>
-        <?php endif; ?>
+            <div class="text-center mt-2">
+                <a href="/PTE-MANAGEMENT-SYSTEM/src/Auth/login.php"
+                   class="bg-indigo-800 text-white px-6 py-2.5 rounded-lg hover:bg-indigo-700 font-medium text-sm transition inline-block">
+                    Go to Login
+                </a>
+            </div>
+        <?php else: ?>
+        <p class="text-sm text-slate-500 mb-6">Choose a new password for your account.</p>
 
-        <?php if ($valid): ?>
-        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/src/Auth/reset-password.php?token=<?= htmlspecialchars($token, ENT_QUOTES, 'UTF-8') ?>" novalidate>
+        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/src/Auth/reset-password.php" novalidate>
             <div class="mb-4">
                 <label for="password" class="block text-sm font-medium text-slate-700 mb-1">New password</label>
                 <input
@@ -155,11 +157,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid) {
         </form>
         <?php endif; ?>
 
+        <?php if ($success === ''): ?>
         <div class="mt-6 text-center">
             <a href="/PTE-MANAGEMENT-SYSTEM/src/Auth/login.php" class="text-sm text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
                 <i class="ti ti-arrow-left text-sm"></i> Back to login
             </a>
         </div>
+        <?php endif; ?>
     </div>
 </div>
 

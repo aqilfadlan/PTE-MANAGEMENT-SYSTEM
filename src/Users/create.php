@@ -68,9 +68,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 oci_execute($stmt);
                 oci_free_statement($stmt);
 
-                $newIdStmt = oci_parse($conn, 'SELECT SEQ_USER.CURRVAL AS new_id FROM DUAL');
+                $newIdStmt = oci_parse($conn, 'SELECT user_id FROM USERS WHERE email = :email');
+                oci_bind_by_name($newIdStmt, ':email', $input['email']);
                 oci_execute($newIdStmt);
-                $newId = (int)oci_fetch_assoc($newIdStmt)['NEW_ID'];
+                $newId = (int)oci_fetch_assoc($newIdStmt)['USER_ID'];
                 oci_free_statement($newIdStmt);
 
                 if ($input['role'] === 'ADMIN') {

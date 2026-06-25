@@ -20,13 +20,14 @@ if ($id === 0) {
 try {
     $conn = getConnection();
 
-    $sql  = 'SELECT s.student_id, s.fullname, s.ic_number, s.phone, s.status, s.created_at,
+    $sql  = "SELECT s.student_id, s.fullname, s.ic_number, s.phone, s.status,
+                    TO_CHAR(s.created_at, 'YYYY-MM-DD') AS created_at,
                     g.name AS grade_name, g.grade_level,
                     p.parent_id, p.fullname AS parent_name, p.phone AS parent_phone, p.email AS parent_email
              FROM   STUDENT s
              JOIN   GRADE   g ON g.grade_id  = s.grade_id
              JOIN   PARENT  p ON p.parent_id = s.parent_id
-             WHERE  s.student_id = :id';
+             WHERE  s.student_id = :id";
     $stmt = oci_parse($conn, $sql);
     oci_bind_by_name($stmt, ':id', $id);
     oci_execute($stmt);
@@ -41,15 +42,15 @@ try {
     }
 
     // Enrolled classes
-    $clsSql  = 'SELECT c.class_id, c.name AS class_name, c.fee,
+    $clsSql  = "SELECT c.class_id, c.name AS class_name, c.fee,
                        s.name AS subject_name, u.fullname AS tutor_name,
-                       cs.enrolled_at
+                       TO_CHAR(cs.enrolled_at, 'YYYY-MM-DD') AS enrolled_at
                 FROM   CLASS_STUDENT cs
                 JOIN   CLASS         c  ON c.class_id   = cs.class_id
                 JOIN   SUBJECT       s  ON s.subject_id = c.subject_id
                 JOIN   USERS         u  ON u.user_id    = c.user_id
                 WHERE  cs.student_id = :id
-                ORDER  BY cs.enrolled_at DESC';
+                ORDER  BY cs.enrolled_at DESC";
     $clsStmt = oci_parse($conn, $clsSql);
     oci_bind_by_name($clsStmt, ':id', $id);
     oci_execute($clsStmt);
@@ -58,15 +59,16 @@ try {
     oci_free_statement($clsStmt);
 
     // Recent attendance (last 10)
-    $attSql  = 'SELECT sa.status AS att_status, sa.remarks,
-                       cs.session_date, cs.start_time,
+    $attSql  = "SELECT sa.status AS att_status, sa.remarks,
+                       TO_CHAR(cs.session_date, 'YYYY-MM-DD') AS session_date,
+                       cs.start_time,
                        c.name AS class_name
                 FROM   STUDENT_ATTENDANCE sa
                 JOIN   CLASS_SESSION      cs ON cs.session_id = sa.session_id
                 JOIN   CLASS              c  ON c.class_id    = cs.class_id
                 WHERE  sa.student_id = :id
                 ORDER  BY cs.session_date DESC
-                FETCH NEXT 10 ROWS ONLY';
+                OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY";
     $attStmt = oci_parse($conn, $attSql);
     oci_bind_by_name($attStmt, ':id', $id);
     oci_execute($attStmt);

@@ -14,16 +14,16 @@ A web-based tuition centre management system built for Malaysian tuition centres
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Backend | PHP (native, no framework) |
-| Database | Oracle 23ai Free |
-| DB Driver | `ext-oci8` via `php_oci8_19.dll` |
-| Frontend | HTML + Tailwind CSS (inline via CDN) |
-| Icons | Tabler Icons (webfont via CDN) |
-| Theme | Indigo & Soft Grey |
-| Query style | Raw SQL only — no ORM, no query builder |
-| Package manager | pnpm (frontend assets if needed) |
+| Layer           | Technology                              |
+| --------------- | --------------------------------------- |
+| Backend         | PHP (native, no framework)              |
+| Database        | Oracle 23ai Free                        |
+| DB Driver       | `ext-oci8` via `php_oci8_19.dll`        |
+| Frontend        | HTML + Tailwind CSS (inline via CDN)    |
+| Icons           | Tabler Icons (webfont via CDN)          |
+| Theme           | Indigo & Soft Grey                      |
+| Query style     | Raw SQL only — no ORM, no query builder |
+| Package manager | pnpm (frontend assets if needed)        |
 
 > No Laravel. No Eloquent. No migrations. All DDL is written directly in Oracle SQL.
 
@@ -123,29 +123,121 @@ oci_commit($conn);
 
 ---
 
+## SQL Syllabus Constraints (ICT502/ITS571 — Database Engineering)
+
+When writing SQL, **only use syntax and concepts covered in my course syllabus below**. Do not introduce features, functions, or patterns outside this scope, even if they are more modern, more efficient, or more idiomatic — I am graded against this specific syllabus and unfamiliar syntax will cost me marks or confuse my understanding.
+
+### Allowed SQL features
+
+**Basic SELECT**
+
+- `SELECT`, `DISTINCT`, column aliasing (with and without `AS`, quoted aliases for spaces)
+- String concatenation with `||` and `CONCAT()` (note: `CONCAT()` only takes 2 arguments)
+- Literal strings with embedded quotes using `q'[...]'`
+
+**WHERE clause**
+
+- Comparison operators: `=`, `!=`, `<`, `>`, `<=`, `>=`
+- `BETWEEN...AND`, `IN`, `NOT IN`
+- `IS NULL`, `IS NOT NULL`
+- `LIKE` with `%` and `_` wildcards, `ESCAPE` clause
+- `AND`, `OR`, `NOT`
+- Substitution variables (`&variable_name`)
+
+**Functions**
+
+- String: `SUBSTR`, `LENGTH`, `INSTR`, `LPAD`, `TRIM`, `REPLACE`, `CONCAT`
+- Number: `ROUND`, `TRUNC`, `MOD`
+- Date: `SYSDATE`, `MONTHS_BETWEEN`, `ADD_MONTHS`, `NEXT_DAY`, `LAST_DAY`, `TO_CHAR`, `TO_DATE`, date arithmetic (`+`/`-` on dates)
+- Null handling: `COALESCE`
+- Conditional: `CASE WHEN...THEN...ELSE...END` (searched), `CASE col WHEN val THEN...END` (simple)
+
+**Aggregation**
+
+- `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`
+- `GROUP BY`, `HAVING`
+- Nested aggregates (e.g. `MAX(AVG(salary))`)
+
+**Joins**
+
+- `NATURAL JOIN`
+- `JOIN...USING(column)`
+- `JOIN...ON` (equijoin, theta join)
+- Self joins (same table aliased twice)
+- `LEFT OUTER JOIN` (and the LEFT OUTER JOIN + `IS NULL` anti-join pattern)
+- Do NOT use `RIGHT JOIN`, `FULL OUTER JOIN`, or ANSI join shorthand beyond what's listed above unless I explicitly ask.
+
+**Subqueries**
+
+- Single-row and multi-row subqueries in `WHERE`
+- `IN` / `NOT IN` with subqueries (always paired with `IS NOT NULL` filtering when the subquery column is nullable)
+
+**Set operators**
+
+- `UNION`, `UNION ALL`, `INTERSECT`, `MINUS`
+- Column-matching rules (same count/type, names from first query), single `ORDER BY` only at the end
+- `TO_CHAR(NULL)` / `TO_DATE(NULL)` placeholder trick for mismatched columns
+
+**DDL**
+
+- `CREATE TABLE` (including `AS subquery`)
+- Column-level and table-level constraints: `NOT NULL`, `UNIQUE`, `PRIMARY KEY`, `FOREIGN KEY` (`REFERENCES`), `CHECK`
+- Composite primary keys (table-level only)
+- `ALTER TABLE ADD/MODIFY/DROP COLUMN/SET UNUSED/DROP UNUSED COLUMNS`
+- `DROP TABLE`, `TRUNCATE TABLE`
+
+**DML & Transactions**
+
+- `INSERT`, `UPDATE`, `DELETE`
+- `SELECT ... FOR UPDATE` (row locking)
+- `COMMIT`, `ROLLBACK` concepts (crash recovery reasoning)
+
+**Relational Algebra**
+
+- Use these exact symbols only: σ (selection), π (projection), ⋈ (join), ρ (rename), ℑ (group/aggregate), τ (sort), − (set difference), ∪ (union), ∩ (intersect), × (Cartesian product), ▷ (semijoin), ÷ (division)
+- Build RA inside-out: FROM/joins → WHERE (σ) → GROUP BY (ℑ) → HAVING (second σ) → alias (ρ) → ORDER BY (τ — outermost)
+- WHERE and HAVING are always two separate σ layers at different nesting depths — never combine them into one σ in formal answers unless I say otherwise.
+
+### Explicitly out of scope — do not use
+
+- Window functions (`ROW_NUMBER`, `RANK`, `LAG`, `LEAD`, `OVER()`, etc.)
+- CTEs (`WITH` clause)
+- `MERGE` statement
+- PL/SQL blocks, stored procedures, triggers, cursors
+- Analytic/OLAP extensions, `PIVOT`/`UNPIVOT`
+- Recursive queries (`CONNECT BY`, recursive CTEs)
+- JSON/XML functions
+- Any vendor-specific syntax beyond standard Oracle SQL taught in class
+
+### When I ask for help
+
+- If a problem could be solved with something outside this list, default to the syllabus-approved method even if longer or less efficient, and only mention the "better" approach if I explicitly ask whether a more advanced option exists.
+- If my own query syntax is outside this list, flag it and suggest the syllabus-equivalent rewrite.
+- Match the formatting conventions I've used in class: lowercase or uppercase keywords are both fine, but keep one style consistent within a single query.
+
 ## Database Schema
 
 ### Tables & Sequences
 
-| Table | Sequence | PK |
-|---|---|---|
-| USERS | SEQ_USER | USER_ID |
-| OWNER_PROFILE | — | USER_ID (FK) |
-| ADMIN_PROFILE | — | USER_ID (FK) |
-| TUTOR_PROFILE | — | USER_ID (FK) |
-| PASSWORD_RESET_TOKEN | SEQ_TOKEN | TOKEN_ID |
-| SUBJECT | SEQ_SUBJECT | SUBJECT_ID |
-| GRADE | SEQ_GRADE | GRADE_ID |
-| PARENT | SEQ_PARENT | PARENT_ID |
-| STUDENT | SEQ_STUDENT | STUDENT_ID |
-| CLASS | SEQ_CLASS | CLASS_ID |
-| CLASS_SCHEDULE | SEQ_SCHEDULE | SCHEDULE_ID |
-| CLASS_SESSION | SEQ_SESSION | SESSION_ID |
-| STUDENT_ATTENDANCE | SEQ_ATTENDANCE | ATTENDANCE_ID |
-| CLASS_STUDENT | — | (CLASS_ID, STUDENT_ID) composite PK |
-| INVOICE | SEQ_INVOICE | INVOICE_ID |
-| INVOICE_ITEM | SEQ_INVOICE_ITEM | ITEM_ID |
-| PAYMENT | SEQ_PAYMENT | PAYMENT_ID |
+| Table                | Sequence         | PK                                  |
+| -------------------- | ---------------- | ----------------------------------- |
+| USERS                | SEQ_USER         | USER_ID                             |
+| OWNER_PROFILE        | —                | USER_ID (FK)                        |
+| ADMIN_PROFILE        | —                | USER_ID (FK)                        |
+| TUTOR_PROFILE        | —                | USER_ID (FK)                        |
+| PASSWORD_RESET_TOKEN | SEQ_TOKEN        | TOKEN_ID                            |
+| SUBJECT              | SEQ_SUBJECT      | SUBJECT_ID                          |
+| GRADE                | SEQ_GRADE        | GRADE_ID                            |
+| PARENT               | SEQ_PARENT       | PARENT_ID                           |
+| STUDENT              | SEQ_STUDENT      | STUDENT_ID                          |
+| CLASS                | SEQ_CLASS        | CLASS_ID                            |
+| CLASS_SCHEDULE       | SEQ_SCHEDULE     | SCHEDULE_ID                         |
+| CLASS_SESSION        | SEQ_SESSION      | SESSION_ID                          |
+| STUDENT_ATTENDANCE   | SEQ_ATTENDANCE   | ATTENDANCE_ID                       |
+| CLASS_STUDENT        | —                | (CLASS_ID, STUDENT_ID) composite PK |
+| INVOICE              | SEQ_INVOICE      | INVOICE_ID                          |
+| INVOICE_ITEM         | SEQ_INVOICE_ITEM | ITEM_ID                             |
+| PAYMENT              | SEQ_PAYMENT      | PAYMENT_ID                          |
 
 ### Key Relationships
 
@@ -158,16 +250,16 @@ oci_commit($conn);
 
 ### ENUM-style CHECK Constraints
 
-| Table | Column | Allowed Values |
-|---|---|---|
-| USERS | ROLE | `'OWNER'`, `'ADMIN'`, `'TUTOR'` |
-| STUDENT | STATUS | `'ACTIVE'`, `'INACTIVE'` |
-| CLASS | STATUS | `'ACTIVE'`, `'INACTIVE'` |
-| CLASS_SCHEDULE | DAYSOFWEEK | `'MON'`,`'TUE'`,`'WED'`,`'THU'`,`'FRI'`,`'SAT'`,`'SUN'` |
-| CLASS_SESSION | STATUS | `'SCHEDULED'`, `'COMPLETED'`, `'CANCELLED'` |
-| STUDENT_ATTENDANCE | STATUS | `'PRESENT'`, `'ABSENT'`, `'LATE'` |
-| INVOICE | STATUS | `'UNPAID'`, `'PARTIAL'`, `'PAID'`, `'OVERDUE'` |
-| PAYMENT | METHOD | `'CASH'`, `'BANK_TRANSFER'`, `'ONLINE'`, `'CHEQUE'` |
+| Table              | Column     | Allowed Values                                          |
+| ------------------ | ---------- | ------------------------------------------------------- |
+| USERS              | ROLE       | `'OWNER'`, `'ADMIN'`, `'TUTOR'`                         |
+| STUDENT            | STATUS     | `'ACTIVE'`, `'INACTIVE'`                                |
+| CLASS              | STATUS     | `'ACTIVE'`, `'INACTIVE'`                                |
+| CLASS_SCHEDULE     | DAYSOFWEEK | `'MON'`,`'TUE'`,`'WED'`,`'THU'`,`'FRI'`,`'SAT'`,`'SUN'` |
+| CLASS_SESSION      | STATUS     | `'SCHEDULED'`, `'COMPLETED'`, `'CANCELLED'`             |
+| STUDENT_ATTENDANCE | STATUS     | `'PRESENT'`, `'ABSENT'`, `'LATE'`                       |
+| INVOICE            | STATUS     | `'UNPAID'`, `'PARTIAL'`, `'PAID'`, `'OVERDUE'`          |
+| PAYMENT            | METHOD     | `'CASH'`, `'BANK_TRANSFER'`, `'ONLINE'`, `'CHEQUE'`     |
 
 ---
 
@@ -253,7 +345,10 @@ TUITION-MANAGEMENT/
   ```
 - **Tabler Icons via CDN** — webfont, outline style only
   ```html
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont/dist/tabler-icons.min.css">
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont/dist/tabler-icons.min.css"
+  />
   ```
   Usage: `<i class="ti ti-{icon-name}"></i>`
 - All styling is **inline Tailwind utility classes** — no custom CSS files unless unavoidable
@@ -263,56 +358,56 @@ TUITION-MANAGEMENT/
 
 ### Theme — Indigo & Soft Grey
 
-| Role | Tailwind class | Hex |
-|---|---|---|
-| Primary (sidebar, buttons) | `bg-indigo-800` | `#3730a3` |
-| Primary hover | `bg-indigo-700` | `#4338ca` |
-| Primary light (badges, bg) | `bg-indigo-100` | `#e0e7ff` |
-| Primary text on light | `text-indigo-800` | `#3730a3` |
-| Accent (highlights) | `bg-indigo-500` | `#6366f1` |
-| Page background | `bg-slate-100` | `#f1f5f9` |
-| Card / surface | `bg-white` | `#ffffff` |
-| Body text | `text-slate-800` | `#1e293b` |
-| Muted text | `text-slate-500` | `#64748b` |
-| Border | `border-slate-200` | `#e2e8f0` |
+| Role                       | Tailwind class     | Hex       |
+| -------------------------- | ------------------ | --------- |
+| Primary (sidebar, buttons) | `bg-indigo-800`    | `#3730a3` |
+| Primary hover              | `bg-indigo-700`    | `#4338ca` |
+| Primary light (badges, bg) | `bg-indigo-100`    | `#e0e7ff` |
+| Primary text on light      | `text-indigo-800`  | `#3730a3` |
+| Accent (highlights)        | `bg-indigo-500`    | `#6366f1` |
+| Page background            | `bg-slate-100`     | `#f1f5f9` |
+| Card / surface             | `bg-white`         | `#ffffff` |
+| Body text                  | `text-slate-800`   | `#1e293b` |
+| Muted text                 | `text-slate-500`   | `#64748b` |
+| Border                     | `border-slate-200` | `#e2e8f0` |
 
 ### Status Badge Colours
 
-| Status | Classes |
-|---|---|
-| Active / Present / Paid / Completed | `bg-green-100 text-green-700` |
-| Inactive / Absent / Cancelled | `bg-red-100 text-red-700` |
-| Late / Partial / Scheduled | `bg-yellow-100 text-yellow-700` |
-| Overdue | `bg-orange-100 text-orange-700` |
-| Unpaid | `bg-slate-100 text-slate-600` |
+| Status                              | Classes                         |
+| ----------------------------------- | ------------------------------- |
+| Active / Present / Paid / Completed | `bg-green-100 text-green-700`   |
+| Inactive / Absent / Cancelled       | `bg-red-100 text-red-700`       |
+| Late / Partial / Scheduled          | `bg-yellow-100 text-yellow-700` |
+| Overdue                             | `bg-orange-100 text-orange-700` |
+| Unpaid                              | `bg-slate-100 text-slate-600`   |
 
 ### Common Tabler Icons for This System
 
-| Context | Icon class |
-|---|---|
-| Dashboard | `ti ti-layout-dashboard` |
-| Users / Tutors | `ti ti-users` |
-| Students | `ti ti-school` |
-| Parents | `ti ti-user-heart` |
-| Classes | `ti ti-books` |
-| Subjects | `ti ti-book` |
-| Grades | `ti ti-award` |
-| Schedule | `ti ti-calendar-time` |
-| Sessions | `ti ti-calendar-event` |
-| Attendance | `ti ti-clipboard-check` |
-| Invoices | `ti ti-file-invoice` |
-| Payments | `ti ti-cash` |
-| Reports | `ti ti-chart-bar` |
-| Add / Create | `ti ti-plus` |
-| Edit | `ti ti-pencil` |
-| Delete | `ti ti-trash` |
-| View / Show | `ti ti-eye` |
-| Search | `ti ti-search` |
-| Logout | `ti ti-logout` |
-| Settings | `ti ti-settings` |
-| Back | `ti ti-arrow-left` |
-| Success / Check | `ti ti-circle-check` |
-| Error / Alert | `ti ti-alert-circle` |
+| Context         | Icon class               |
+| --------------- | ------------------------ |
+| Dashboard       | `ti ti-layout-dashboard` |
+| Users / Tutors  | `ti ti-users`            |
+| Students        | `ti ti-school`           |
+| Parents         | `ti ti-user-heart`       |
+| Classes         | `ti ti-books`            |
+| Subjects        | `ti ti-book`             |
+| Grades          | `ti ti-award`            |
+| Schedule        | `ti ti-calendar-time`    |
+| Sessions        | `ti ti-calendar-event`   |
+| Attendance      | `ti ti-clipboard-check`  |
+| Invoices        | `ti ti-file-invoice`     |
+| Payments        | `ti ti-cash`             |
+| Reports         | `ti ti-chart-bar`        |
+| Add / Create    | `ti ti-plus`             |
+| Edit            | `ti ti-pencil`           |
+| Delete          | `ti ti-trash`            |
+| View / Show     | `ti ti-eye`              |
+| Search          | `ti ti-search`           |
+| Logout          | `ti ti-logout`           |
+| Settings        | `ti ti-settings`         |
+| Back            | `ti ti-arrow-left`       |
+| Success / Check | `ti ti-circle-check`     |
+| Error / Alert   | `ti ti-alert-circle`     |
 
 ### Layout Pattern
 
@@ -378,20 +473,20 @@ if ($_SESSION['role'] !== 'ADMIN') {
 
 ## Role Access Matrix
 
-| Module | OWNER | ADMIN | TUTOR |
-|---|---|---|---|
-| Dashboard | ✓ | ✓ | ✓ |
-| User management | ✓ | — | — |
-| Subject & Grade | ✓ | ✓ | — |
-| Class management | ✓ | ✓ | — |
-| Schedule & Sessions | ✓ | ✓ | ✓ (view own) |
-| Attendance (take) | — | — | ✓ |
-| Attendance (view) | ✓ | ✓ | ✓ (own classes) |
-| Student management | ✓ | ✓ | — |
-| Parent management | ✓ | ✓ | — |
-| Invoicing | ✓ | ✓ | — |
-| Payments | ✓ | ✓ | — |
-| Reports | ✓ | — | — |
+| Module              | OWNER | ADMIN | TUTOR           |
+| ------------------- | ----- | ----- | --------------- |
+| Dashboard           | ✓     | ✓     | ✓               |
+| User management     | ✓     | —     | —               |
+| Subject & Grade     | ✓     | ✓     | —               |
+| Class management    | ✓     | ✓     | —               |
+| Schedule & Sessions | ✓     | ✓     | ✓ (view own)    |
+| Attendance (take)   | —     | —     | ✓               |
+| Attendance (view)   | ✓     | ✓     | ✓ (own classes) |
+| Student management  | ✓     | ✓     | —               |
+| Parent management   | ✓     | ✓     | —               |
+| Invoicing           | ✓     | ✓     | —               |
+| Payments            | ✓     | ✓     | —               |
+| Reports             | ✓     | —     | —               |
 
 ---
 
@@ -443,6 +538,7 @@ APP_URL=http://localhost
 ## Common Queries Reference
 
 ### Get all students with grade and parent info
+
 ```sql
 SELECT s.student_id, s.fullname, s.ic_number, s.phone, s.status,
        g.name AS grade_name, g.grade_level,
@@ -454,6 +550,7 @@ ORDER  BY s.fullname
 ```
 
 ### Get classes with subject and tutor
+
 ```sql
 SELECT c.class_id, c.name, c.fee, c.status,
        s.name AS subject_name, s.code AS subject_code,
@@ -467,6 +564,7 @@ ORDER  BY c.name
 ```
 
 ### Get sessions for a class with schedule info
+
 ```sql
 SELECT cs.session_id, cs.session_date, cs.start_time, cs.end_time, cs.status,
        u.fullname AS conducted_by
@@ -477,6 +575,7 @@ ORDER  BY cs.session_date DESC
 ```
 
 ### Get attendance for a session
+
 ```sql
 SELECT sa.attendance_id, sa.status,
        s.student_id, s.fullname AS student_name
@@ -487,6 +586,7 @@ ORDER  BY s.fullname
 ```
 
 ### Get invoices for a parent with payment totals
+
 ```sql
 SELECT i.invoice_id, i.billing_month, i.billing_year,
        i.total_amount, i.status, i.due_date,
@@ -501,6 +601,7 @@ ORDER  BY i.billing_year DESC, i.billing_month DESC
 ```
 
 ### Pagination template
+
 ```sql
 SELECT *
 FROM  (
@@ -515,6 +616,7 @@ WHERE rn > :offset
 ```
 
 Or using Oracle 12c+ syntax (preferred on Oracle 23ai):
+
 ```sql
 SELECT student_id, fullname
 FROM   student
@@ -526,26 +628,26 @@ OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
 
 ## Pages & Features Summary
 
-| Page | Path | Description |
-|---|---|---|
-| Login | `/src/Auth/login.php` | Email + password, sets session |
-| Forgot Password | `/src/Auth/forgot.php` | Generates PASSWORD_RESET_TOKEN |
-| Reset Password | `/src/Auth/reset-password.php` | Validates token, updates password |
-| Dashboard | `/src/Dashboard/index.php` | Role-specific KPI summary |
-| User List | `/src/Users/index.php` | Manage Owner/Admin/Tutor accounts |
-| Subject List | `/src/Subjects/index.php` | CRUD for subjects |
-| Grade List | `/src/Grades/index.php` | CRUD for grades |
-| Class List | `/src/Classes/index.php` | All classes, filter by status |
-| Class Detail | `/src/Classes/show.php` | Enrolled students, schedules |
-| Generate Sessions | `/src/Schedule/generate.php` | Bulk-create CLASS_SESSION from schedules |
-| Session List | `/src/Sessions/index.php` | Calendar/table of sessions |
-| Take Attendance | `/src/Attendance/take.php` | Mark Present/Absent/Late per session |
-| Attendance Report | `/src/Attendance/report.php` | Filter by class or student |
-| Student List | `/src/Students/index.php` | All students with search/filter |
-| Student Profile | `/src/Students/show.php` | Attendance + invoice history |
-| Enrol Student | `/src/Students/enrol.php` | Add/remove from CLASS_STUDENT |
-| Parent List | `/src/Parents/index.php` | All parents |
-| Invoice List | `/src/Invoices/index.php` | Filter by status, month, parent |
-| Generate Invoice | `/src/Invoices/generate.php` | Auto-create invoice + items from enrolments |
-| Invoice Detail | `/src/Invoices/show.php` | Line items + payment history |
-| Record Payment | `/src/Payments/record.php` | POST form, updates invoice status |
+| Page              | Path                           | Description                                 |
+| ----------------- | ------------------------------ | ------------------------------------------- |
+| Login             | `/src/Auth/login.php`          | Email + password, sets session              |
+| Forgot Password   | `/src/Auth/forgot.php`         | Generates PASSWORD_RESET_TOKEN              |
+| Reset Password    | `/src/Auth/reset-password.php` | Validates token, updates password           |
+| Dashboard         | `/src/Dashboard/index.php`     | Role-specific KPI summary                   |
+| User List         | `/src/Users/index.php`         | Manage Owner/Admin/Tutor accounts           |
+| Subject List      | `/src/Subjects/index.php`      | CRUD for subjects                           |
+| Grade List        | `/src/Grades/index.php`        | CRUD for grades                             |
+| Class List        | `/src/Classes/index.php`       | All classes, filter by status               |
+| Class Detail      | `/src/Classes/show.php`        | Enrolled students, schedules                |
+| Generate Sessions | `/src/Schedule/generate.php`   | Bulk-create CLASS_SESSION from schedules    |
+| Session List      | `/src/Sessions/index.php`      | Calendar/table of sessions                  |
+| Take Attendance   | `/src/Attendance/take.php`     | Mark Present/Absent/Late per session        |
+| Attendance Report | `/src/Attendance/report.php`   | Filter by class or student                  |
+| Student List      | `/src/Students/index.php`      | All students with search/filter             |
+| Student Profile   | `/src/Students/show.php`       | Attendance + invoice history                |
+| Enrol Student     | `/src/Students/enrol.php`      | Add/remove from CLASS_STUDENT               |
+| Parent List       | `/src/Parents/index.php`       | All parents                                 |
+| Invoice List      | `/src/Invoices/index.php`      | Filter by status, month, parent             |
+| Generate Invoice  | `/src/Invoices/generate.php`   | Auto-create invoice + items from enrolments |
+| Invoice Detail    | `/src/Invoices/show.php`       | Line items + payment history                |
+| Record Payment    | `/src/Payments/record.php`     | POST form, updates invoice status           |
