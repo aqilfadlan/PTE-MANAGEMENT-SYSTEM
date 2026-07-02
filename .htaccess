@@ -6,7 +6,15 @@ Options -Indexes
     Deny from all
 </FilesMatch>
 
+# Clean URLs — route non-file, non-directory requests through index.php
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteRule ^$ /src/Auth/login.php [L,R=302]
+    RewriteBase /PTE-MANAGEMENT-SYSTEM/
+
+    # Allow direct access to real files and directories (assets, vendor, etc.)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Route everything else to index.php
+    RewriteRule ^(.*)$ index.php [QSA,L]
 </IfModule>

@@ -3,7 +3,7 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 
@@ -12,7 +12,7 @@ $userId    = (int)$_SESSION['user_id'];
 $sessionId = (int)($_GET['id'] ?? 0);
 
 if ($sessionId === 0) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/sessions');
     exit;
 }
 
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($role, ['OWNER', 'ADMIN'])
             $_SESSION['flash_error'] = 'Update failed.';
         }
     }
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/show.php?id=' . $sessionId);
+    header('Location: /PTE-MANAGEMENT-SYSTEM/sessions/show?id=' . $sessionId);
     exit;
 }
 
@@ -67,14 +67,14 @@ try {
     if (!$session) {
         oci_close($conn);
         $_SESSION['flash_error'] = 'Session not found.';
-        header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php');
+        header('Location: /PTE-MANAGEMENT-SYSTEM/sessions');
         exit;
     }
 
     // Tutors can only view their own sessions
     if ($role === 'TUTOR' && (int)$session['TUTOR_ID'] !== $userId) {
         oci_close($conn);
-        header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php');
+        header('Location: /PTE-MANAGEMENT-SYSTEM/sessions');
         exit;
     }
 
@@ -112,7 +112,7 @@ try {
     oci_close($conn);
 } catch (\RuntimeException $e) {
     $_SESSION['flash_error'] = 'Database error.';
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/sessions');
     exit;
 }
 
@@ -132,10 +132,10 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="mb-6 flex items-center justify-between">
         <div class="flex items-center gap-3">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php?class_id=<?= (int)$session['CLASS_ID'] ?>"
+            <a href="/PTE-MANAGEMENT-SYSTEM/sessions?class_id=<?= (int)$session['CLASS_ID'] ?>"
                class="text-slate-400 hover:text-slate-600">
                 <i class="ti ti-arrow-left text-lg"></i>
             </a>
@@ -150,7 +150,7 @@ require_once '../../views/layout/sidebar.php';
             </div>
         </div>
         <?php if ($session['STATUS'] !== 'CANCELLED'): ?>
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Attendance/take.php?session_id=<?= $sessionId ?>"
+        <a href="/PTE-MANAGEMENT-SYSTEM/attendance/take?session_id=<?= $sessionId ?>"
            class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
             <i class="ti ti-clipboard-check"></i> Take Attendance
         </a>
@@ -192,7 +192,7 @@ require_once '../../views/layout/sidebar.php';
             <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                 <h2 class="text-sm font-semibold text-slate-800">Attendance (<?= count($attendance) ?> marked)</h2>
                 <?php if ($session['STATUS'] !== 'CANCELLED'): ?>
-                <a href="/PTE-MANAGEMENT-SYSTEM/src/Attendance/take.php?session_id=<?= $sessionId ?>"
+                <a href="/PTE-MANAGEMENT-SYSTEM/attendance/take?session_id=<?= $sessionId ?>"
                    class="text-xs text-indigo-600 hover:text-indigo-800 font-medium inline-flex items-center gap-1">
                     <i class="ti ti-pencil"></i> Edit
                 </a>
@@ -213,7 +213,7 @@ require_once '../../views/layout/sidebar.php';
                     <?php foreach ($attendance as $a): ?>
                     <tr class="border-b border-slate-100 hover:bg-slate-50">
                         <td class="px-4 py-3 font-medium text-slate-800">
-                            <a href="/PTE-MANAGEMENT-SYSTEM/src/Students/show.php?id=<?= (int)$a['STUDENT_ID'] ?>"
+                            <a href="/PTE-MANAGEMENT-SYSTEM/students/show?id=<?= (int)$a['STUDENT_ID'] ?>"
                                class="hover:text-indigo-700">
                                 <?= htmlspecialchars($a['FULLNAME'], ENT_QUOTES, 'UTF-8') ?>
                             </a>

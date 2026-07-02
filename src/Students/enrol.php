@@ -3,17 +3,17 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
 $classId = (int)($_GET['class_id'] ?? 0);
 if ($classId === 0) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Classes/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/classes');
     exit;
 }
 
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['flash_error'] = 'Could not enrol student. They may already be enrolled.';
         }
     }
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Students/enrol.php?class_id=' . $classId);
+    header('Location: /PTE-MANAGEMENT-SYSTEM/students/enrol?class_id=' . $classId);
     exit;
 }
 
@@ -58,7 +58,7 @@ try {
 
     if (!$class) {
         oci_close($conn);
-        header('Location: /PTE-MANAGEMENT-SYSTEM/src/Classes/index.php');
+        header('Location: /PTE-MANAGEMENT-SYSTEM/classes');
         exit;
     }
 
@@ -123,7 +123,7 @@ try {
     oci_close($conn);
 } catch (\RuntimeException $e) {
     $_SESSION['flash_error'] = 'Database error.';
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Classes/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/classes');
     exit;
 }
 
@@ -132,9 +132,9 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="mb-6 flex items-center gap-3">
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/show.php?id=<?= $classId ?>" class="text-slate-400 hover:text-slate-600">
+        <a href="/PTE-MANAGEMENT-SYSTEM/classes/show?id=<?= $classId ?>" class="text-slate-400 hover:text-slate-600">
             <i class="ti ti-arrow-left text-lg"></i>
         </a>
         <div>
@@ -175,7 +175,7 @@ require_once '../../views/layout/sidebar.php';
                         <p class="text-xs text-slate-400"><?= htmlspecialchars($s['GRADE_NAME'], ENT_QUOTES, 'UTF-8') ?>
                             &middot; Since <?= date('d M Y', strtotime($s['ENROLLED_AT'])) ?></p>
                     </div>
-                    <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/src/Classes/show.php?id=<?= $classId ?>"
+                    <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/classes/show?id=<?= $classId ?>"
                           onsubmit="return confirm('Remove this student from the class?')">
                         <input type="hidden" name="action"     value="unenrol">
                         <input type="hidden" name="student_id" value="<?= (int)$s['STUDENT_ID'] ?>">

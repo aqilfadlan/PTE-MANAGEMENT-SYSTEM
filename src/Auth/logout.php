@@ -3,5 +3,5 @@
 session_start();
 session_destroy();
 
-header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+header('Location: /PTE-MANAGEMENT-SYSTEM/login');
 exit;

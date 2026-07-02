@@ -2,9 +2,10 @@
 
 session_start();
 require_once '../../config/database.php';
+require_once '../../config/debug.php';
 
 if (isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -38,9 +39,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 session_regenerate_id(true);
                 $_SESSION['user_id']  = $user['USER_ID'];
                 $_SESSION['fullname'] = $user['FULLNAME'];
+                $_SESSION['email']    = $user['EMAIL'];
                 $_SESSION['role']     = $user['ROLE'];
 
-                header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+                header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
                 exit;
             } else {
                 $error = 'Invalid email or password.';
@@ -79,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         <?php endif; ?>
 
-        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/src/Auth/login.php" novalidate>
+        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/login" novalidate>
             <div class="mb-4">
                 <label for="email" class="block text-sm font-medium text-slate-700 mb-1">Email address</label>
                 <input
@@ -97,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="mb-6">
                 <div class="flex items-center justify-between mb-1">
                     <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
-                    <a href="/PTE-MANAGEMENT-SYSTEM/src/Auth/forgot.php" class="text-xs text-indigo-600 hover:text-indigo-800">Forgot password?</a>
+                    <a href="/PTE-MANAGEMENT-SYSTEM/forgot" class="text-xs text-indigo-600 hover:text-indigo-800">Forgot password?</a>
                 </div>
                 <input
                     type="password"

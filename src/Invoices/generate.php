@@ -3,11 +3,11 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -27,8 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $parentId     = (int)($_POST['parent_id']     ?? 0);  // 0 = all parents
     $doGenerate   = isset($_POST['confirm']);
 
-    if ($billingMonth < 1 || $billingMonth > 12) $errors[] = 'Select a valid billing month.';
-    if ($billingYear  < 2024 || $billingYear > 2030) $errors[] = 'Select a valid billing year.';
+    if ($billingMonth < 1 || $billingMonth > 12) $errors['billing_month'] = 'Select a valid billing month.';
+    if ($billingYear  < 2024 || $billingYear > 2030) $errors['billing_year'] = 'Select a valid billing year.';
     if ($dueDay < 1 || $dueDay > 28) $dueDay = 15;
 
     if (empty($errors)) {
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             oci_free_statement($pStmt);
 
             if (empty($eligibleParents)) {
-                $errors[] = 'No eligible parents found. All parents may already have invoices for this month, or no active enrolments exist.';
+                $errors['_general'] = 'No eligible parents found. All parents may already have invoices for this month, or no active enrolments exist.';
             } else {
                 // For each parent, gather line items (one per student per class)
                 foreach ($eligibleParents as &$par) {
@@ -173,14 +173,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     oci_commit($conn);
                     oci_close($conn);
                     $_SESSION['flash_success'] = "$created invoice(s) generated for {$months[$billingMonth]} $billingYear.";
-                    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Invoices/index.php?month=' . $billingMonth . '&year=' . $billingYear);
+                    header('Location: /PTE-MANAGEMENT-SYSTEM/invoices?month=' . $billingMonth . '&year=' . $billingYear);
                     exit;
                 }
             }
 
             oci_close($conn);
         } catch (\RuntimeException $e) {
-            $errors[] = 'Database error. Please try again.';
+            $errors['_general'] = 'Database error. Please try again.';
         }
     }
 }
@@ -203,9 +203,9 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="mb-6 flex items-center gap-3">
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Invoices/index.php" class="text-slate-400 hover:text-slate-600">
+        <a href="/PTE-MANAGEMENT-SYSTEM/invoices" class="text-slate-400 hover:text-slate-600">
             <i class="ti ti-arrow-left text-lg"></i>
         </a>
         <div>
@@ -223,14 +223,23 @@ require_once '../../views/layout/sidebar.php';
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
+    <?php
+        function fieldRing(array $errors, string $key): string {
+            return isset($errors[$key])
+                ? 'border-red-400 focus:ring-2 focus:ring-red-500 focus:border-red-500'
+                : 'border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+        }
+    ?>
 
     <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6 max-w-xl mb-6">
-        <form method="POST" class="space-y-5">
+        <form method="POST" class="space-y-5"
+              onsubmit="this.querySelector('button[type=submit]').disabled = true; this.querySelector('button[type=submit]').innerHTML = '<i class=\'ti ti-loader-2 animate-spin\'></i> Loading…';">
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Billing Month <span class="text-red-500">*</span></label>
                     <select name="billing_month" required
-                            class="border border-slate-300 rounded-lg px-3 py-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            aria-invalid="<?= isset($errors['billing_month']) ? 'true' : 'false' ?>"
+                            class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'billing_month') ?>">
                         <option value="">Select…</option>
                         <?php foreach ($months as $m => $label): ?>
                         <option value="<?= $m ?>" <?= (int)($_POST['billing_month'] ?? 0) === $m ? 'selected' : '' ?>>
@@ -238,16 +247,23 @@ require_once '../../views/layout/sidebar.php';
                         </option>
                         <?php endforeach; ?>
                     </select>
+                    <?php if (isset($errors['billing_month'])): ?>
+                    <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['billing_month'], ENT_QUOTES, 'UTF-8') ?></p>
+                    <?php endif; ?>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Billing Year <span class="text-red-500">*</span></label>
                     <select name="billing_year" required
-                            class="border border-slate-300 rounded-lg px-3 py-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            aria-invalid="<?= isset($errors['billing_year']) ? 'true' : 'false' ?>"
+                            class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'billing_year') ?>">
                         <option value="">Select…</option>
                         <?php foreach ([2024, 2025, 2026] as $y): ?>
                         <option value="<?= $y ?>" <?= (int)($_POST['billing_year'] ?? 0) === $y ? 'selected' : '' ?>><?= $y ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <?php if (isset($errors['billing_year'])): ?>
+                    <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['billing_year'], ENT_QUOTES, 'UTF-8') ?></p>
+                    <?php endif; ?>
                 </div>
             </div>
             <div class="grid grid-cols-2 gap-4">
@@ -255,13 +271,13 @@ require_once '../../views/layout/sidebar.php';
                     <label class="block text-sm font-medium text-slate-700 mb-1">Due Day of Month</label>
                     <input type="number" name="due_day" min="1" max="28"
                            value="<?= (int)($_POST['due_day'] ?? 15) ?>"
-                           class="border border-slate-300 rounded-lg px-3 py-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                           class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'due_day') ?>">
                     <p class="text-xs text-slate-400 mt-1">e.g. 15 = due on the 15th of the billing month</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Parent <span class="text-slate-400 font-normal">(optional)</span></label>
                     <select name="parent_id"
-                            class="border border-slate-300 rounded-lg px-3 py-2 w-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'parent_id') ?>">
                         <option value="0">All eligible parents</option>
                         <?php foreach ($parentList as $p): ?>
                         <option value="<?= (int)$p['PARENT_ID'] ?>"
@@ -274,7 +290,7 @@ require_once '../../views/layout/sidebar.php';
             </div>
             <div class="flex gap-3">
                 <button type="submit"
-                        class="bg-indigo-100 text-indigo-800 px-5 py-2 rounded-lg hover:bg-indigo-200 inline-flex items-center gap-2 text-sm font-medium">
+                        class="bg-indigo-100 text-indigo-800 px-5 py-2 rounded-lg hover:bg-indigo-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2 text-sm font-medium">
                     <i class="ti ti-eye"></i> Preview
                 </button>
             </div>
@@ -287,14 +303,15 @@ require_once '../../views/layout/sidebar.php';
             <h2 class="text-sm font-semibold text-slate-800">
                 Preview — <?= count($preview) ?> invoice(s) to generate
             </h2>
-            <form method="POST">
+            <form method="POST"
+                  onsubmit="this.querySelector('button[type=submit]').disabled = true; this.querySelector('button[type=submit]').innerHTML = '<i class=\'ti ti-loader-2 animate-spin\'></i> Generating…';">
                 <input type="hidden" name="billing_month" value="<?= (int)($_POST['billing_month'] ?? 0) ?>">
                 <input type="hidden" name="billing_year"  value="<?= (int)($_POST['billing_year']  ?? 0) ?>">
                 <input type="hidden" name="due_day"       value="<?= (int)($_POST['due_day']       ?? 15) ?>">
                 <input type="hidden" name="parent_id"     value="<?= (int)($_POST['parent_id']     ?? 0) ?>">
                 <input type="hidden" name="confirm"       value="1">
                 <button type="submit"
-                        class="bg-indigo-800 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm font-medium">
+                        class="bg-indigo-800 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2 text-sm font-medium">
                     <i class="ti ti-file-plus"></i> Confirm & Generate
                 </button>
             </form>

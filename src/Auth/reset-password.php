@@ -4,13 +4,13 @@ session_start();
 require_once '../../config/database.php';
 
 if (isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
 // Must arrive here via verify-otp.php
 if (empty($_SESSION['reset_user_id']) || empty($_SESSION['reset_token'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/forgot.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/forgot');
     exit;
 }
 
@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 oci_close($conn);
                 // Token expired between verify and reset pages
                 unset($_SESSION['reset_user_id'], $_SESSION['reset_token']);
-                header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/forgot.php');
+                header('Location: /PTE-MANAGEMENT-SYSTEM/forgot');
                 exit;
             }
 
@@ -114,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <span><?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></span>
             </div>
             <div class="text-center mt-2">
-                <a href="/PTE-MANAGEMENT-SYSTEM/src/Auth/login.php"
+                <a href="/PTE-MANAGEMENT-SYSTEM/login"
                    class="bg-indigo-800 text-white px-6 py-2.5 rounded-lg hover:bg-indigo-700 font-medium text-sm transition inline-block">
                     Go to Login
                 </a>
@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php else: ?>
         <p class="text-sm text-slate-500 mb-6">Choose a new password for your account.</p>
 
-        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/src/Auth/reset-password.php" novalidate>
+        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/reset-password" novalidate>
             <div class="mb-4">
                 <label for="password" class="block text-sm font-medium text-slate-700 mb-1">New password</label>
                 <input
@@ -159,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <?php if ($success === ''): ?>
         <div class="mt-6 text-center">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Auth/login.php" class="text-sm text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
+            <a href="/PTE-MANAGEMENT-SYSTEM/login" class="text-sm text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
                 <i class="ti ti-arrow-left text-sm"></i> Back to login
             </a>
         </div>

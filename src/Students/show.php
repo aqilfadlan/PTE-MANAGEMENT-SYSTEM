@@ -3,17 +3,17 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
 $id = (int)($_GET['id'] ?? 0);
 if ($id === 0) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Students/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/students');
     exit;
 }
 
@@ -37,7 +37,7 @@ try {
     if (!$student) {
         oci_close($conn);
         $_SESSION['flash_error'] = 'Student not found.';
-        header('Location: /PTE-MANAGEMENT-SYSTEM/src/Students/index.php');
+        header('Location: /PTE-MANAGEMENT-SYSTEM/students');
         exit;
     }
 
@@ -79,7 +79,7 @@ try {
     oci_close($conn);
 } catch (\RuntimeException $e) {
     $_SESSION['flash_error'] = 'Database error.';
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Students/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/students');
     exit;
 }
 
@@ -88,10 +88,10 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="mb-6 flex items-center justify-between">
         <div class="flex items-center gap-3">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Students/index.php" class="text-slate-400 hover:text-slate-600">
+            <a href="/PTE-MANAGEMENT-SYSTEM/students" class="text-slate-400 hover:text-slate-600">
                 <i class="ti ti-arrow-left text-lg"></i>
             </a>
             <div>
@@ -100,7 +100,7 @@ require_once '../../views/layout/sidebar.php';
             </div>
         </div>
         <div class="flex gap-2">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Students/edit.php?id=<?= $id ?>"
+            <a href="/PTE-MANAGEMENT-SYSTEM/students/edit?id=<?= $id ?>"
                class="bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg hover:bg-indigo-200 inline-flex items-center gap-2 text-sm">
                 <i class="ti ti-pencil"></i> Edit
             </a>
@@ -156,7 +156,7 @@ require_once '../../views/layout/sidebar.php';
                     <dd class="text-slate-800 font-medium"><?= htmlspecialchars($student['PARENT_EMAIL'] ?? '—', ENT_QUOTES, 'UTF-8') ?></dd>
                 </div>
             </dl>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Parents/edit.php?id=<?= $student['PARENT_ID'] ?>"
+            <a href="/PTE-MANAGEMENT-SYSTEM/parents/edit?id=<?= $student['PARENT_ID'] ?>"
                class="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 mt-4">
                 <i class="ti ti-pencil"></i> Edit parent
             </a>

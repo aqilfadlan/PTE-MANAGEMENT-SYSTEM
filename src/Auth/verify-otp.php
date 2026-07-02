@@ -4,13 +4,13 @@ session_start();
 require_once '../../config/database.php';
 
 if (isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
 // Must arrive here via forgot.php
 if (empty($_SESSION['otp_email'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/forgot.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/forgot');
     exit;
 }
 
@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['reset_token']   = $otp;
                 unset($_SESSION['otp_email']);
 
-                header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/reset-password.php');
+                header('Location: /PTE-MANAGEMENT-SYSTEM/reset-password');
                 exit;
             } else {
                 $error = 'Invalid or expired code. Please try again.';
@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             We sent a 6-digit code to <span class="font-medium text-slate-700"><?= htmlspecialchars($email, ENT_QUOTES, 'UTF-8') ?></span>. Enter it below. The code expires in 15 minutes.
         </p>
 
-        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/src/Auth/verify-otp.php" novalidate>
+        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/verify-otp" novalidate>
             <div class="mb-6">
                 <label for="otp" class="block text-sm font-medium text-slate-700 mb-1">6-digit code</label>
                 <input
@@ -116,13 +116,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
 
         <div class="mt-5 text-center">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Auth/forgot.php" class="text-sm text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
+            <a href="/PTE-MANAGEMENT-SYSTEM/forgot" class="text-sm text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
                 <i class="ti ti-refresh text-sm"></i> Resend code
             </a>
         </div>
 
         <div class="mt-3 text-center">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Auth/login.php" class="text-sm text-slate-400 hover:text-slate-600 inline-flex items-center gap-1">
+            <a href="/PTE-MANAGEMENT-SYSTEM/login" class="text-sm text-slate-400 hover:text-slate-600 inline-flex items-center gap-1">
                 <i class="ti ti-arrow-left text-sm"></i> Back to login
             </a>
         </div>

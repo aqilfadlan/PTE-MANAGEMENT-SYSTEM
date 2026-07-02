@@ -3,11 +3,11 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -48,11 +48,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $maxStudents = (int)($_POST['max_students'] ?? 30);
     $status      = $_POST['status'] ?? 'ACTIVE';
 
-    if ($name === '')    $errors[] = 'Class name is required.';
-    if ($subjectId <= 0) $errors[] = 'Please select a subject.';
-    if ($gradeId   <= 0) $errors[] = 'Please select a grade.';
-    if ($userId    <= 0) $errors[] = 'Please select a tutor.';
-    if (!is_numeric($fee) || (float)$fee < 0) $errors[] = 'Fee must be a valid amount.';
+    if ($name === '')    $errors['name'] = 'Class name is required.';
+    if ($subjectId <= 0) $errors['subject_id'] = 'Please select a subject.';
+    if ($gradeId   <= 0) $errors['grade_id'] = 'Please select a grade.';
+    if ($userId    <= 0) $errors['user_id'] = 'Please select a tutor.';
+    if (!is_numeric($fee) || (float)$fee < 0) $errors['fee'] = 'Fee must be a valid amount.';
     if (!in_array($status, ['ACTIVE', 'INACTIVE'])) $status = 'ACTIVE';
 
     if (empty($errors)) {
@@ -74,10 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             oci_free_statement($stmt);
             oci_close($conn);
             $_SESSION['flash_success'] = 'Class created successfully.';
-            header('Location: /PTE-MANAGEMENT-SYSTEM/src/Classes/index.php');
+            header('Location: /PTE-MANAGEMENT-SYSTEM/classes');
             exit;
         } catch (\RuntimeException $e) {
-            $errors[] = 'Database error. Please try again.';
+            $errors['_general'] = 'Database error. Please try again.';
         }
     }
 }
@@ -87,9 +87,9 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="mb-6 flex items-center gap-3">
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/index.php" class="text-slate-400 hover:text-slate-600">
+        <a href="/PTE-MANAGEMENT-SYSTEM/classes" class="text-slate-400 hover:text-slate-600">
             <i class="ti ti-arrow-left text-lg"></i>
         </a>
         <div>
@@ -105,22 +105,35 @@ require_once '../../views/layout/sidebar.php';
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
+    <?php
+        function fieldRing(array $errors, string $key): string {
+            return isset($errors[$key])
+                ? 'border-red-400 focus:ring-2 focus:ring-red-500 focus:border-red-500'
+                : 'border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+        }
+    ?>
 
     <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6 max-w-2xl">
-        <form method="POST" class="space-y-5">
+        <form method="POST" class="space-y-5"
+              onsubmit="this.querySelector('button[type=submit]').disabled = true; this.querySelector('button[type=submit]').innerHTML = '<i class=\'ti ti-loader-2 animate-spin\'></i> Creating…';">
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Class Name <span class="text-red-500">*</span></label>
                 <input type="text" name="name" required
                        value="<?= htmlspecialchars($_POST['name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                        placeholder="e.g. Matematik Darjah 4 Pagi"
-                       class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                       aria-invalid="<?= isset($errors['name']) ? 'true' : 'false' ?>"
+                       class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'name') ?>">
+                <?php if (isset($errors['name'])): ?>
+                <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['name'], ENT_QUOTES, 'UTF-8') ?></p>
+                <?php endif; ?>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Subject <span class="text-red-500">*</span></label>
                     <select name="subject_id" required
-                            class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                            aria-invalid="<?= isset($errors['subject_id']) ? 'true' : 'false' ?>"
+                            class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'subject_id') ?>">
                         <option value="">Select subject…</option>
                         <?php foreach ($subjects as $s): ?>
                         <option value="<?= (int)$s['SUBJECT_ID'] ?>"
@@ -130,11 +143,15 @@ require_once '../../views/layout/sidebar.php';
                         </option>
                         <?php endforeach; ?>
                     </select>
+                    <?php if (isset($errors['subject_id'])): ?>
+                    <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['subject_id'], ENT_QUOTES, 'UTF-8') ?></p>
+                    <?php endif; ?>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Grade <span class="text-red-500">*</span></label>
                     <select name="grade_id" required
-                            class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                            aria-invalid="<?= isset($errors['grade_id']) ? 'true' : 'false' ?>"
+                            class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'grade_id') ?>">
                         <option value="">Select grade…</option>
                         <?php foreach ($grades as $g): ?>
                         <option value="<?= (int)$g['GRADE_ID'] ?>"
@@ -143,13 +160,17 @@ require_once '../../views/layout/sidebar.php';
                         </option>
                         <?php endforeach; ?>
                     </select>
+                    <?php if (isset($errors['grade_id'])): ?>
+                    <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['grade_id'], ENT_QUOTES, 'UTF-8') ?></p>
+                    <?php endif; ?>
                 </div>
             </div>
 
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Tutor <span class="text-red-500">*</span></label>
                 <select name="user_id" required
-                        class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                        aria-invalid="<?= isset($errors['user_id']) ? 'true' : 'false' ?>"
+                        class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'user_id') ?>">
                     <option value="">Select tutor…</option>
                     <?php foreach ($tutors as $t): ?>
                     <option value="<?= (int)$t['USER_ID'] ?>"
@@ -158,6 +179,9 @@ require_once '../../views/layout/sidebar.php';
                     </option>
                     <?php endforeach; ?>
                 </select>
+                <?php if (isset($errors['user_id'])): ?>
+                <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['user_id'], ENT_QUOTES, 'UTF-8') ?></p>
+                <?php endif; ?>
             </div>
 
             <div class="grid grid-cols-3 gap-4">
@@ -166,13 +190,17 @@ require_once '../../views/layout/sidebar.php';
                     <input type="number" name="fee" required min="0" step="0.01"
                            value="<?= htmlspecialchars($_POST['fee'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                            placeholder="0.00"
-                           class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                           aria-invalid="<?= isset($errors['fee']) ? 'true' : 'false' ?>"
+                           class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'fee') ?>">
+                    <?php if (isset($errors['fee'])): ?>
+                    <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['fee'], ENT_QUOTES, 'UTF-8') ?></p>
+                    <?php endif; ?>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Max Students</label>
                     <input type="number" name="max_students" min="1" max="100"
                            value="<?= htmlspecialchars((string)($_POST['max_students'] ?? 30), ENT_QUOTES, 'UTF-8') ?>"
-                           class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                           class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'max_students') ?>">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Status</label>
@@ -186,11 +214,11 @@ require_once '../../views/layout/sidebar.php';
 
             <div class="flex gap-3 pt-2">
                 <button type="submit"
-                        class="bg-indigo-800 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
+                        class="bg-indigo-800 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2 text-sm">
                     <i class="ti ti-device-floppy"></i> Create Class
                 </button>
-                <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/index.php"
-                   class="bg-slate-100 text-slate-600 px-5 py-2 rounded-lg hover:bg-slate-200 inline-flex items-center gap-2 text-sm">
+                <a href="/PTE-MANAGEMENT-SYSTEM/classes"
+                   class="bg-slate-100 text-slate-600 px-5 py-2 rounded-lg hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 inline-flex items-center gap-2 text-sm">
                     Cancel
                 </a>
             </div>

@@ -3,11 +3,11 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if ($_SESSION['role'] !== 'OWNER') {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -39,8 +39,13 @@ try {
     unset($v);
     oci_execute($countStmt);
     $total     = (int)oci_fetch_assoc($countStmt)['TOTAL'];
-    $totalPages = ceil($total / $limit);
+    $totalPages = max(1, (int)ceil($total / $limit));
     oci_free_statement($countStmt);
+
+    if ($page > $totalPages) {
+        $page   = $totalPages;
+        $offset = ($page - 1) * $limit;
+    }
 
     $sql  = "SELECT u.user_id, u.fullname, u.email, u.phone, u.role, u.is_active, u.created_at
              FROM   USERS u
@@ -69,13 +74,13 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-xl font-semibold text-slate-800">Users</h1>
             <p class="text-slate-500 text-sm mt-1">Manage admin and tutor accounts</p>
         </div>
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Users/create.php"
+        <a href="/PTE-MANAGEMENT-SYSTEM/users/create"
            class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
             <i class="ti ti-plus"></i> Add User
         </a>
@@ -103,7 +108,7 @@ require_once '../../views/layout/sidebar.php';
                 <i class="ti ti-search"></i> Search
             </button>
             <?php if ($search !== '' || $role !== ''): ?>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Users/index.php"
+            <a href="/PTE-MANAGEMENT-SYSTEM/users"
                class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 text-sm inline-flex items-center gap-2">
                 <i class="ti ti-x"></i> Clear
             </a>
@@ -156,7 +161,7 @@ require_once '../../views/layout/sidebar.php';
                         <?php endif; ?>
                     </td>
                     <td class="px-4 py-3 text-right">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Users/edit.php?id=<?= $u['USER_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/users/edit?id=<?= $u['USER_ID'] ?>"
                            class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-xs font-medium mr-3">
                             <i class="ti ti-pencil"></i> Edit
                         </a>
@@ -175,14 +180,10 @@ require_once '../../views/layout/sidebar.php';
     <?php if ($totalPages > 1): ?>
     <div class="flex items-center justify-between mt-4 text-sm text-slate-500">
         <span>Showing <?= count($users) ?> of <?= $total ?> users</span>
-        <div class="flex gap-1">
-            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&role=<?= urlencode($role) ?>"
-               class="px-3 py-1 rounded-lg <?= $i === $page ? 'bg-indigo-800 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50' ?>">
-                <?= $i ?>
-            </a>
-            <?php endfor; ?>
-        </div>
+        <?php
+            $baseParams = ['search' => $search, 'role' => $role];
+            require_once '../../views/partials/pagination.php';
+        ?>
     </div>
     <?php endif; ?>
 </main>
@@ -200,7 +201,7 @@ require_once '../../views/layout/sidebar.php';
             </div>
         </div>
         <p class="text-sm text-slate-600 mb-5">Are you sure you want to delete <strong id="delete-name"></strong>?</p>
-        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/src/Users/delete.php">
+        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/users/delete">
             <input type="hidden" name="id" id="delete-id">
             <div class="flex gap-3 justify-end">
                 <button type="button" onclick="document.getElementById('delete-modal').classList.add('hidden')"

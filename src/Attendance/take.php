@@ -3,7 +3,7 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 
@@ -12,7 +12,7 @@ $userId    = (int)$_SESSION['user_id'];
 $sessionId = (int)($_GET['session_id'] ?? 0);
 
 if ($sessionId === 0) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/sessions');
     exit;
 }
 
@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (\RuntimeException $e) {
         $_SESSION['flash_error'] = 'Failed to save attendance. Please try again.';
     }
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/show.php?id=' . $sessionId);
+    header('Location: /PTE-MANAGEMENT-SYSTEM/sessions/show?id=' . $sessionId);
     exit;
 }
 
@@ -95,21 +95,21 @@ try {
 
     if (!$session) {
         oci_close($conn);
-        header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php');
+        header('Location: /PTE-MANAGEMENT-SYSTEM/sessions');
         exit;
     }
 
     // Tutors can only take attendance for their own sessions
     if ($role === 'TUTOR' && (int)$session['TUTOR_ID'] !== $userId) {
         oci_close($conn);
-        header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php');
+        header('Location: /PTE-MANAGEMENT-SYSTEM/sessions');
         exit;
     }
 
     if ($session['STATUS'] === 'CANCELLED') {
         oci_close($conn);
         $_SESSION['flash_error'] = 'Cannot take attendance for a cancelled session.';
-        header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/show.php?id=' . $sessionId);
+        header('Location: /PTE-MANAGEMENT-SYSTEM/sessions/show?id=' . $sessionId);
         exit;
     }
 
@@ -144,7 +144,7 @@ try {
     oci_close($conn);
 } catch (\RuntimeException $e) {
     $_SESSION['flash_error'] = 'Database error.';
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/sessions');
     exit;
 }
 
@@ -153,9 +153,9 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="mb-6 flex items-center gap-3">
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Sessions/show.php?id=<?= $sessionId ?>"
+        <a href="/PTE-MANAGEMENT-SYSTEM/sessions/show?id=<?= $sessionId ?>"
            class="text-slate-400 hover:text-slate-600">
             <i class="ti ti-arrow-left text-lg"></i>
         </a>
@@ -257,7 +257,7 @@ require_once '../../views/layout/sidebar.php';
                     class="bg-indigo-800 text-white px-6 py-2.5 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm font-medium">
                 <i class="ti ti-device-floppy"></i> Save Attendance
             </button>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Sessions/show.php?id=<?= $sessionId ?>"
+            <a href="/PTE-MANAGEMENT-SYSTEM/sessions/show?id=<?= $sessionId ?>"
                class="bg-slate-100 text-slate-600 px-5 py-2.5 rounded-lg hover:bg-slate-200 inline-flex items-center gap-2 text-sm">
                 Cancel
             </a>

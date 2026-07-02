@@ -1,0 +1,7 @@
+{
+  "files": ["src/**/*.php", "index.php"],
+  "exclude": ["src/Auth/**/*.php", "config/**/*.php"],
+  "insertBefore": "</body>",
+  "commentSyntax": "html",
+  "cspChecked": true
+}

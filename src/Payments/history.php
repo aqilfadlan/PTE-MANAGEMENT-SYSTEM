@@ -3,11 +3,11 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -86,8 +86,13 @@ try {
     unset($v);
     oci_execute($countStmt);
     $total      = (int)oci_fetch_assoc($countStmt)['TOTAL'];
-    $totalPages = (int)ceil($total / $limit);
+    $totalPages = max(1, (int)ceil($total / $limit));
     oci_free_statement($countStmt);
+
+    if ($page > $totalPages) {
+        $page   = $totalPages;
+        $offset = ($page - 1) * $limit;
+    }
 
     // Records
     $sql  = "SELECT pay.payment_id, pay.amount_paid, pay.method,
@@ -128,7 +133,7 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-xl font-semibold text-slate-800">Payment History</h1>
@@ -190,7 +195,7 @@ require_once '../../views/layout/sidebar.php';
                 <i class="ti ti-search"></i> Filter
             </button>
             <?php if ($search !== '' || $method !== '' || $dateFrom !== '' || $dateTo !== ''): ?>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Payments/history.php"
+            <a href="/PTE-MANAGEMENT-SYSTEM/payments/history"
                class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 text-sm inline-flex items-center gap-2">
                 <i class="ti ti-x"></i> Clear
             </a>
@@ -231,7 +236,7 @@ require_once '../../views/layout/sidebar.php';
                         <span class="block text-xs text-slate-400"><?= htmlspecialchars($pay['PARENT_PHONE'], ENT_QUOTES, 'UTF-8') ?></span>
                     </td>
                     <td class="px-4 py-3">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Invoices/show.php?id=<?= (int)$pay['INVOICE_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/invoices/show?id=<?= (int)$pay['INVOICE_ID'] ?>"
                            class="font-mono text-xs text-indigo-600 hover:text-indigo-800 font-semibold">
                             #<?= str_pad($pay['INVOICE_ID'], 5, '0', STR_PAD_LEFT) ?>
                         </a>
@@ -261,14 +266,10 @@ require_once '../../views/layout/sidebar.php';
     <?php if ($totalPages > 1): ?>
     <div class="flex items-center justify-between mt-4 text-sm text-slate-500">
         <span>Showing <?= count($payments) ?> of <?= $total ?> payments</span>
-        <div class="flex gap-1">
-            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&method=<?= urlencode($method) ?>&date_from=<?= urlencode($dateFrom) ?>&date_to=<?= urlencode($dateTo) ?>"
-               class="px-3 py-1 rounded-lg <?= $i === $page ? 'bg-indigo-800 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50' ?>">
-                <?= $i ?>
-            </a>
-            <?php endfor; ?>
-        </div>
+        <?php
+            $baseParams = ['search' => $search, 'method' => $method, 'date_from' => $dateFrom, 'date_to' => $dateTo];
+            require_once '../../views/partials/pagination.php';
+        ?>
     </div>
     <?php endif; ?>
 </main>

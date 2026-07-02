@@ -8,7 +8,7 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 if (isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Store email in session to pass to verify page
                 $_SESSION['otp_email'] = $email;
 
-                header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/verify-otp.php');
+                header('Location: /PTE-MANAGEMENT-SYSTEM/verify-otp');
                 exit;
             }
 
@@ -142,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if ($success === ''): ?>
         <p class="text-sm text-slate-500 mb-6">Enter your account email and we'll send you a 6-digit reset code.</p>
 
-        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/src/Auth/forgot.php" novalidate>
+        <form method="POST" action="/PTE-MANAGEMENT-SYSTEM/forgot" novalidate>
             <div class="mb-6">
                 <label for="email" class="block text-sm font-medium text-slate-700 mb-1">Email address</label>
                 <input
@@ -165,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <div class="mt-6 text-center">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Auth/login.php" class="text-sm text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
+            <a href="/PTE-MANAGEMENT-SYSTEM/login" class="text-sm text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
                 <i class="ti ti-arrow-left text-sm"></i> Back to login
             </a>
         </div>

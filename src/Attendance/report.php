@@ -3,7 +3,7 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 
@@ -94,8 +94,13 @@ try {
     unset($v);
     oci_execute($countStmt);
     $total      = (int)oci_fetch_assoc($countStmt)['TOTAL'];
-    $totalPages = (int)ceil($total / $limit);
+    $totalPages = max(1, (int)ceil($total / $limit));
     oci_free_statement($countStmt);
+
+    if ($page > $totalPages) {
+        $page   = $totalPages;
+        $offset = ($page - 1) * $limit;
+    }
 
     // Records
     $sql  = "SELECT sa.attendance_id, sa.status AS att_status, sa.remarks,
@@ -143,7 +148,7 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-xl font-semibold text-slate-800">Attendance Report</h1>
@@ -222,7 +227,7 @@ require_once '../../views/layout/sidebar.php';
                 <i class="ti ti-search"></i> Filter
             </button>
             <?php if ($classId > 0 || $studentId > 0 || $statusFilter !== '' || $dateFrom !== '' || $dateTo !== ''): ?>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Attendance/report.php"
+            <a href="/PTE-MANAGEMENT-SYSTEM/attendance/report"
                class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 text-sm inline-flex items-center gap-2">
                 <i class="ti ti-x"></i> Clear
             </a>
@@ -261,13 +266,13 @@ require_once '../../views/layout/sidebar.php';
                         <span class="block text-xs text-slate-400"><?= date('D', strtotime($r['SESSION_DATE'])) ?></span>
                     </td>
                     <td class="px-4 py-3 font-medium text-slate-800">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Students/show.php?id=<?= (int)$r['STUDENT_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/students/show?id=<?= (int)$r['STUDENT_ID'] ?>"
                            class="hover:text-indigo-700">
                             <?= htmlspecialchars($r['STUDENT_NAME'], ENT_QUOTES, 'UTF-8') ?>
                         </a>
                     </td>
                     <td class="px-4 py-3 text-slate-600">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Sessions/show.php?id=<?= (int)$r['SESSION_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/sessions/show?id=<?= (int)$r['SESSION_ID'] ?>"
                            class="hover:text-indigo-700">
                             <?= htmlspecialchars($r['CLASS_NAME'], ENT_QUOTES, 'UTF-8') ?>
                         </a>
@@ -295,14 +300,10 @@ require_once '../../views/layout/sidebar.php';
     <?php if ($totalPages > 1): ?>
     <div class="flex items-center justify-between mt-4 text-sm text-slate-500">
         <span>Showing <?= count($records) ?> of <?= $total ?> records</span>
-        <div class="flex gap-1">
-            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <a href="?page=<?= $i ?>&class_id=<?= $classId ?>&student_id=<?= $studentId ?>&att_status=<?= urlencode($statusFilter) ?>&date_from=<?= urlencode($dateFrom) ?>&date_to=<?= urlencode($dateTo) ?>"
-               class="px-3 py-1 rounded-lg <?= $i === $page ? 'bg-indigo-800 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50' ?>">
-                <?= $i ?>
-            </a>
-            <?php endfor; ?>
-        </div>
+        <?php
+            $baseParams = ['class_id' => $classId, 'student_id' => $studentId, 'att_status' => $statusFilter, 'date_from' => $dateFrom, 'date_to' => $dateTo];
+            require_once '../../views/partials/pagination.php';
+        ?>
     </div>
     <?php endif; ?>
 </main>

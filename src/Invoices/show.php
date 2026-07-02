@@ -3,17 +3,17 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
 $invoiceId = (int)($_GET['id'] ?? 0);
 if ($invoiceId === 0) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Invoices/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/invoices');
     exit;
 }
 
@@ -46,7 +46,7 @@ try {
     if (!$invoice) {
         oci_close($conn);
         $_SESSION['flash_error'] = 'Invoice not found.';
-        header('Location: /PTE-MANAGEMENT-SYSTEM/src/Invoices/index.php');
+        header('Location: /PTE-MANAGEMENT-SYSTEM/invoices');
         exit;
     }
 
@@ -89,7 +89,7 @@ try {
     oci_close($conn);
 } catch (\RuntimeException $e) {
     $_SESSION['flash_error'] = 'Database error: ' . $e->getMessage();
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Invoices/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/invoices');
     exit;
 }
 
@@ -115,10 +115,10 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="mb-6 flex items-center justify-between">
         <div class="flex items-center gap-3">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Invoices/index.php" class="text-slate-400 hover:text-slate-600">
+            <a href="/PTE-MANAGEMENT-SYSTEM/invoices" class="text-slate-400 hover:text-slate-600">
                 <i class="ti ti-arrow-left text-lg"></i>
             </a>
             <div>
@@ -132,7 +132,7 @@ require_once '../../views/layout/sidebar.php';
             </div>
         </div>
         <?php if ($invoice['STATUS'] !== 'PAID'): ?>
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Payments/record.php?invoice_id=<?= $invoiceId ?>"
+        <a href="/PTE-MANAGEMENT-SYSTEM/payments/record?invoice_id=<?= $invoiceId ?>"
            class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
             <i class="ti ti-cash"></i> Record Payment
         </a>
@@ -206,7 +206,7 @@ require_once '../../views/layout/sidebar.php';
                 <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                     <h2 class="text-sm font-semibold text-slate-800">Payment History</h2>
                     <?php if ($invoice['STATUS'] !== 'PAID'): ?>
-                    <a href="/PTE-MANAGEMENT-SYSTEM/src/Payments/record.php?invoice_id=<?= $invoiceId ?>"
+                    <a href="/PTE-MANAGEMENT-SYSTEM/payments/record?invoice_id=<?= $invoiceId ?>"
                        class="text-xs text-indigo-600 hover:text-indigo-800 font-medium inline-flex items-center gap-1">
                         <i class="ti ti-plus"></i> Add Payment
                     </a>
@@ -272,7 +272,7 @@ require_once '../../views/layout/sidebar.php';
                     </div>
                     <?php endif; ?>
                 </dl>
-                <a href="/PTE-MANAGEMENT-SYSTEM/src/Parents/edit.php?id=<?= (int)$invoice['PARENT_ID'] ?>"
+                <a href="/PTE-MANAGEMENT-SYSTEM/parents/edit?id=<?= (int)$invoice['PARENT_ID'] ?>"
                    class="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 mt-4">
                     <i class="ti ti-pencil"></i> Edit parent
                 </a>

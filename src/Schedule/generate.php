@@ -3,11 +3,11 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -49,15 +49,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $dateTo    = trim($_POST['date_to']    ?? '');
     $doGenerate = isset($_POST['confirm']);
 
-    if ($classId   <= 0)          $errors[] = 'Please select a class.';
-    if ($dateFrom  === '')         $errors[] = 'Start date is required.';
-    if ($dateTo    === '')         $errors[] = 'End date is required.';
-    if ($dateFrom  > $dateTo)      $errors[] = 'Start date must be before end date.';
+    if ($classId   <= 0)          $errors['class_id'] = 'Please select a class.';
+    if ($dateFrom  === '')         $errors['date_from'] = 'Start date is required.';
+    if ($dateTo    === '')         $errors['date_to'] = 'End date is required.';
+    if ($dateFrom  > $dateTo)      $errors['date_to'] = 'Start date must be before end date.';
 
     $fromTs = strtotime($dateFrom);
     $toTs   = strtotime($dateTo);
     if (empty($errors) && ($toTs - $fromTs) > 366 * 86400) {
-        $errors[] = 'Date range cannot exceed 1 year.';
+        $errors['date_to'] = 'Date range cannot exceed 1 year.';
     }
 
     if (empty($errors)) {
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             oci_free_statement($tutStmt);
 
             if (empty($schedules)) {
-                $errors[] = 'No active schedules found for this class in the selected date range.';
+                $errors['_general'] = 'No active schedules found for this class in the selected date range.';
             } else {
                 // Build list of dates to generate
                 $toGenerate = [];
@@ -117,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 if (empty($toGenerate)) {
-                    $errors[] = 'No session dates found matching the schedule days in the selected range.';
+                    $errors['_general'] = 'No session dates found matching the schedule days in the selected range.';
                 } elseif (!$doGenerate) {
                     // Preview mode
                     $preview = $toGenerate;
@@ -165,14 +165,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $generated = $inserted;
                     $skipped   = count($toGenerate) - $inserted;
                     $_SESSION['flash_success'] = "$inserted session(s) generated" . ($skipped > 0 ? ", $skipped skipped (already exist)." : '.');
-                    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php?class_id=' . $classId);
+                    header('Location: /PTE-MANAGEMENT-SYSTEM/sessions?class_id=' . $classId);
                     exit;
                 }
             }
 
             if (isset($conn) && $conn) oci_close($conn);
         } catch (\RuntimeException $e) {
-            $errors[] = 'Database error. Please try again.';
+            $errors['_general'] = 'Database error. Please try again.';
         }
     }
 }
@@ -182,9 +182,9 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="mb-6 flex items-center gap-3">
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php" class="text-slate-400 hover:text-slate-600">
+        <a href="/PTE-MANAGEMENT-SYSTEM/sessions" class="text-slate-400 hover:text-slate-600">
             <i class="ti ti-arrow-left text-lg"></i>
         </a>
         <div>
@@ -202,13 +202,22 @@ require_once '../../views/layout/sidebar.php';
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
+    <?php
+        function fieldRing(array $errors, string $key): string {
+            return isset($errors[$key])
+                ? 'border-red-400 focus:ring-2 focus:ring-red-500 focus:border-red-500'
+                : 'border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+        }
+    ?>
 
     <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6 max-w-xl mb-6">
-        <form method="POST" class="space-y-5">
+        <form method="POST" class="space-y-5"
+              onsubmit="this.querySelector('button[type=submit]').disabled = true; this.querySelector('button[type=submit]').innerHTML = '<i class=\'ti ti-loader-2 animate-spin\'></i> Loading…';">
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Class <span class="text-red-500">*</span></label>
                 <select name="class_id" required
-                        class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        aria-invalid="<?= isset($errors['class_id']) ? 'true' : 'false' ?>"
+                        class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'class_id') ?>">
                     <option value="">Select class…</option>
                     <?php foreach ($classes as $c): ?>
                     <option value="<?= (int)$c['CLASS_ID'] ?>"
@@ -219,7 +228,9 @@ require_once '../../views/layout/sidebar.php';
                     </option>
                     <?php endforeach; ?>
                 </select>
-                <?php if (empty($classes)): ?>
+                <?php if (isset($errors['class_id'])): ?>
+                <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['class_id'], ENT_QUOTES, 'UTF-8') ?></p>
+                <?php elseif (empty($classes)): ?>
                 <p class="text-xs text-slate-400 mt-1">No active classes with schedules found. Add a schedule first via the class detail page.</p>
                 <?php endif; ?>
             </div>
@@ -229,19 +240,27 @@ require_once '../../views/layout/sidebar.php';
                     <label class="block text-sm font-medium text-slate-700 mb-1">From <span class="text-red-500">*</span></label>
                     <input type="date" name="date_from" required
                            value="<?= htmlspecialchars($_POST['date_from'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                           class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                           aria-invalid="<?= isset($errors['date_from']) ? 'true' : 'false' ?>"
+                           class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'date_from') ?>">
+                    <?php if (isset($errors['date_from'])): ?>
+                    <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['date_from'], ENT_QUOTES, 'UTF-8') ?></p>
+                    <?php endif; ?>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">To <span class="text-red-500">*</span></label>
                     <input type="date" name="date_to" required
                            value="<?= htmlspecialchars($_POST['date_to'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                           class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                           aria-invalid="<?= isset($errors['date_to']) ? 'true' : 'false' ?>"
+                           class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'date_to') ?>">
+                    <?php if (isset($errors['date_to'])): ?>
+                    <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['date_to'], ENT_QUOTES, 'UTF-8') ?></p>
+                    <?php endif; ?>
                 </div>
             </div>
 
             <div class="flex gap-3 pt-1">
                 <button type="submit"
-                        class="bg-indigo-100 text-indigo-800 px-5 py-2 rounded-lg hover:bg-indigo-200 inline-flex items-center gap-2 text-sm font-medium">
+                        class="bg-indigo-100 text-indigo-800 px-5 py-2 rounded-lg hover:bg-indigo-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2 text-sm font-medium">
                     <i class="ti ti-eye"></i> Preview
                 </button>
             </div>
@@ -253,13 +272,14 @@ require_once '../../views/layout/sidebar.php';
     <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden max-w-xl">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 class="text-sm font-semibold text-slate-800">Preview — <?= count($preview) ?> sessions to generate</h2>
-            <form method="POST">
+            <form method="POST"
+                  onsubmit="this.querySelector('button[type=submit]').disabled = true; this.querySelector('button[type=submit]').innerHTML = '<i class=\'ti ti-loader-2 animate-spin\'></i> Generating…';">
                 <input type="hidden" name="class_id"  value="<?= (int)($_POST['class_id']  ?? 0) ?>">
                 <input type="hidden" name="date_from" value="<?= htmlspecialchars($_POST['date_from'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 <input type="hidden" name="date_to"   value="<?= htmlspecialchars($_POST['date_to']   ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 <input type="hidden" name="confirm"   value="1">
                 <button type="submit"
-                        class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
+                        class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2 text-sm">
                     <i class="ti ti-calendar-plus"></i> Confirm & Generate
                 </button>
             </form>

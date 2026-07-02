@@ -3,11 +3,11 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -22,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $desc   = trim($_POST['description'] ?? '');
     $editId = (int)($_POST['edit_id']    ?? 0);
 
-    if ($name === '')  $errors[] = 'Grade name is required.';
-    if ($level <= 0)   $errors[] = 'Grade level must be a positive number.';
+    if ($name === '')  $errors['name'] = 'Grade name is required.';
+    if ($level <= 0)   $errors['grade_level'] = 'Grade level must be a positive number.';
 
     if (empty($errors)) {
         try {
@@ -55,10 +55,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             oci_close($conn);
-            header('Location: /PTE-MANAGEMENT-SYSTEM/src/Grades/index.php');
+            header('Location: /PTE-MANAGEMENT-SYSTEM/grades');
             exit;
         } catch (\RuntimeException $e) {
-            $errors[] = 'Database error. Please try again.';
+            $errors['_general'] = 'Database error. Please try again.';
         }
     }
 }
@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             $_SESSION['flash_error'] = 'Cannot delete — grade is assigned to students or classes.';
         }
     }
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Grades/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/grades');
     exit;
 }
 
@@ -125,14 +125,14 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-xl font-semibold text-slate-800">Grades</h1>
             <p class="text-slate-500 text-sm mt-1">Manage grade levels offered by the centre</p>
         </div>
         <button onclick="document.getElementById('grade-form-panel').classList.toggle('hidden')"
-                class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
+                class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 inline-flex items-center gap-2 text-sm">
             <i class="ti ti-plus"></i> Add Grade
         </button>
     </div>
@@ -146,11 +146,19 @@ require_once '../../views/layout/sidebar.php';
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
+    <?php
+        function fieldRing(array $errors, string $key): string {
+            return isset($errors[$key])
+                ? 'border-red-400 focus:ring-2 focus:ring-red-500 focus:border-red-500'
+                : 'border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+        }
+    ?>
 
     <!-- Inline form panel -->
     <div id="grade-form-panel" class="<?= ($editing || !empty($errors)) ? '' : 'hidden' ?> bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
         <h2 class="text-sm font-semibold text-slate-800 mb-4"><?= $editing ? 'Edit Grade' : 'New Grade' ?></h2>
-        <form method="POST" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <form method="POST" class="grid grid-cols-1 md:grid-cols-3 gap-4"
+              onsubmit="this.querySelector('button[type=submit]').disabled = true; this.querySelector('button[type=submit]').innerHTML = '<i class=\'ti ti-loader-2 animate-spin\'></i> Saving…';">
             <input type="hidden" name="action"  value="<?= $editing ? 'edit' : 'add' ?>">
             <input type="hidden" name="edit_id" value="<?= $editing ? (int)$editing['GRADE_ID'] : 0 ?>">
             <div>
@@ -158,28 +166,36 @@ require_once '../../views/layout/sidebar.php';
                 <input type="text" name="name" required
                        value="<?= htmlspecialchars($_POST['name'] ?? $editing['NAME'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                        placeholder="e.g. Darjah 1"
-                       class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                       aria-invalid="<?= isset($errors['name']) ? 'true' : 'false' ?>"
+                       class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'name') ?>">
+                <?php if (isset($errors['name'])): ?>
+                <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['name'], ENT_QUOTES, 'UTF-8') ?></p>
+                <?php endif; ?>
             </div>
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Grade Level <span class="text-red-500">*</span></label>
                 <input type="number" name="grade_level" required min="1" max="20"
                        value="<?= htmlspecialchars((string)($_POST['grade_level'] ?? $editing['GRADE_LEVEL'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                        placeholder="1"
-                       class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                       aria-invalid="<?= isset($errors['grade_level']) ? 'true' : 'false' ?>"
+                       class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'grade_level') ?>">
+                <?php if (isset($errors['grade_level'])): ?>
+                <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['grade_level'], ENT_QUOTES, 'UTF-8') ?></p>
+                <?php endif; ?>
             </div>
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
                 <input type="text" name="description"
                        value="<?= htmlspecialchars($_POST['description'] ?? $editing['DESCRIPTION'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                       class="border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                       class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'description') ?>">
             </div>
             <div class="md:col-span-3 flex gap-3">
                 <button type="submit"
-                        class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
+                        class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2 text-sm">
                     <i class="ti ti-device-floppy"></i> <?= $editing ? 'Update Grade' : 'Save Grade' ?>
                 </button>
-                <a href="/PTE-MANAGEMENT-SYSTEM/src/Grades/index.php"
-                   class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 inline-flex items-center gap-2 text-sm">
+                <a href="/PTE-MANAGEMENT-SYSTEM/grades"
+                   class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 inline-flex items-center gap-2 text-sm">
                     Cancel
                 </a>
             </div>
@@ -219,12 +235,12 @@ require_once '../../views/layout/sidebar.php';
                     <td class="px-4 py-3 text-slate-600"><?= (int)$g['CLASS_COUNT'] ?></td>
                     <td class="px-4 py-3 text-right">
                         <a href="?edit=<?= (int)$g['GRADE_ID'] ?>"
-                           class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-xs font-medium mr-3">
+                           class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1.5 py-1 -mx-1.5 text-xs font-medium mr-2">
                             <i class="ti ti-pencil"></i> Edit
                         </a>
                         <?php if ((int)$g['STUDENT_COUNT'] === 0 && (int)$g['CLASS_COUNT'] === 0): ?>
                         <button onclick="confirmDelete(<?= (int)$g['GRADE_ID'] ?>, '<?= htmlspecialchars($g['NAME'], ENT_QUOTES, 'UTF-8') ?>')"
-                                class="inline-flex items-center gap-1 text-red-500 hover:text-red-700 text-xs font-medium">
+                                class="inline-flex items-center gap-1 text-red-500 hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded px-1.5 py-1 -mx-1.5 text-xs font-medium">
                             <i class="ti ti-trash"></i> Delete
                         </button>
                         <?php else: ?>
@@ -240,14 +256,14 @@ require_once '../../views/layout/sidebar.php';
 </main>
 
 <!-- Delete modal -->
-<div id="delete-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+<div id="delete-modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
     <div class="bg-white rounded-xl shadow-lg p-6 w-full max-w-sm">
         <div class="flex items-center gap-3 mb-4">
             <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
                 <i class="ti ti-trash text-red-600 text-lg"></i>
             </div>
             <div>
-                <h3 class="font-semibold text-slate-800">Delete Grade</h3>
+                <h3 id="delete-modal-title" class="font-semibold text-slate-800">Delete Grade</h3>
                 <p class="text-sm text-slate-500">This action cannot be undone.</p>
             </div>
         </div>
@@ -257,8 +273,8 @@ require_once '../../views/layout/sidebar.php';
             <input type="hidden" name="delete_id" id="delete-id">
             <div class="flex gap-3 justify-end">
                 <button type="button" onclick="document.getElementById('delete-modal').classList.add('hidden')"
-                        class="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm">Cancel</button>
-                <button type="submit" class="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 text-sm">Delete</button>
+                        class="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-sm">Cancel</button>
+                <button type="submit" class="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 text-sm">Delete</button>
             </div>
         </form>
     </div>
@@ -270,6 +286,11 @@ function confirmDelete(id, name) {
     document.getElementById('delete-name').textContent = name;
     document.getElementById('delete-modal').classList.remove('hidden');
 }
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+        document.getElementById('delete-modal').classList.add('hidden');
+    }
+});
 </script>
 
 <?php require_once '../../views/layout/footer.php'; ?>

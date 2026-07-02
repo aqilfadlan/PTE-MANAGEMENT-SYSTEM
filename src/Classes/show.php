@@ -3,17 +3,17 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
 $id = (int)($_GET['id'] ?? 0);
 if ($id === 0) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Classes/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/classes');
     exit;
 }
 
@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (\RuntimeException $e) {
         $_SESSION['flash_error'] = 'Action failed. Please try again.';
     }
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Classes/show.php?id=' . $id);
+    header('Location: /PTE-MANAGEMENT-SYSTEM/classes/show?id=' . $id);
     exit;
 }
 
@@ -111,7 +111,7 @@ try {
     if (!$class) {
         oci_close($conn);
         $_SESSION['flash_error'] = 'Class not found.';
-        header('Location: /PTE-MANAGEMENT-SYSTEM/src/Classes/index.php');
+        header('Location: /PTE-MANAGEMENT-SYSTEM/classes');
         exit;
     }
 
@@ -167,7 +167,7 @@ try {
     oci_close($conn);
 } catch (\RuntimeException $e) {
     $_SESSION['flash_error'] = 'Database error.';
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Classes/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/classes');
     exit;
 }
 
@@ -186,10 +186,10 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="mb-6 flex items-center justify-between">
         <div class="flex items-center gap-3">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/index.php" class="text-slate-400 hover:text-slate-600">
+            <a href="/PTE-MANAGEMENT-SYSTEM/classes" class="text-slate-400 hover:text-slate-600">
                 <i class="ti ti-arrow-left text-lg"></i>
             </a>
             <div>
@@ -202,11 +202,11 @@ require_once '../../views/layout/sidebar.php';
             </div>
         </div>
         <div class="flex gap-2">
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Students/enrol.php?class_id=<?= $id ?>"
+            <a href="/PTE-MANAGEMENT-SYSTEM/students/enrol?class_id=<?= $id ?>"
                class="bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg hover:bg-indigo-200 inline-flex items-center gap-2 text-sm">
                 <i class="ti ti-user-plus"></i> Manage Enrolment
             </a>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/edit.php?id=<?= $id ?>"
+            <a href="/PTE-MANAGEMENT-SYSTEM/classes/edit?id=<?= $id ?>"
                class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
                 <i class="ti ti-pencil"></i> Edit
             </a>
@@ -281,7 +281,7 @@ require_once '../../views/layout/sidebar.php';
         <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6 lg:col-span-2">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-sm font-semibold text-slate-800">Recent Sessions</h2>
-                <a href="/PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php?class_id=<?= $id ?>"
+                <a href="/PTE-MANAGEMENT-SYSTEM/sessions?class_id=<?= $id ?>"
                    class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">View all</a>
             </div>
             <?php if (empty($sessions)): ?>
@@ -317,7 +317,7 @@ require_once '../../views/layout/sidebar.php';
     <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 class="text-sm font-semibold text-slate-800">Enrolled Students (<?= count($students) ?>)</h2>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Students/enrol.php?class_id=<?= $id ?>"
+            <a href="/PTE-MANAGEMENT-SYSTEM/students/enrol?class_id=<?= $id ?>"
                class="text-xs text-indigo-600 hover:text-indigo-800 font-medium inline-flex items-center gap-1">
                 <i class="ti ti-user-plus"></i> Manage Enrolment
             </a>
@@ -339,7 +339,7 @@ require_once '../../views/layout/sidebar.php';
                 <?php foreach ($students as $s): ?>
                 <tr class="border-b border-slate-100 hover:bg-slate-50">
                     <td class="px-4 py-3 font-medium text-slate-800">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Students/show.php?id=<?= (int)$s['STUDENT_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/students/show?id=<?= (int)$s['STUDENT_ID'] ?>"
                            class="hover:text-indigo-700">
                             <?= htmlspecialchars($s['FULLNAME'], ENT_QUOTES, 'UTF-8') ?>
                         </a>

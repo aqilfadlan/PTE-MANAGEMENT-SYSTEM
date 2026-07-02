@@ -3,11 +3,11 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -68,8 +68,13 @@ try {
     unset($v);
     oci_execute($countStmt);
     $total      = (int)oci_fetch_assoc($countStmt)['TOTAL'];
-    $totalPages = (int)ceil($total / $limit);
+    $totalPages = max(1, (int)ceil($total / $limit));
     oci_free_statement($countStmt);
+
+    if ($page > $totalPages) {
+        $page   = $totalPages;
+        $offset = ($page - 1) * $limit;
+    }
 
     // List
     $sql  = "SELECT i.invoice_id, i.billing_month, i.billing_year,
@@ -113,14 +118,14 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-xl font-semibold text-slate-800">Invoices</h1>
             <p class="text-slate-500 text-sm mt-1">Billing and payment status</p>
         </div>
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Invoices/generate.php"
-           class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
+        <a href="/PTE-MANAGEMENT-SYSTEM/invoices/generate"
+           class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 inline-flex items-center gap-2 text-sm">
             <i class="ti ti-file-plus"></i> Generate Invoice
         </a>
     </div>
@@ -141,7 +146,7 @@ require_once '../../views/layout/sidebar.php';
             $amt = (float)($statusSummary[$st]['TOTAL_AMT'] ?? 0);
         ?>
         <a href="?status=<?= $st ?>"
-           class="bg-white rounded-lg shadow-sm border-2 <?= $def['color'] ?> p-4 hover:shadow-md transition <?= $statusFilter === $st ? 'ring-2 ring-indigo-400' : '' ?>">
+           class="bg-white rounded-lg shadow-sm border-2 <?= $def['color'] ?> p-4 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 transition <?= $statusFilter === $st ? 'ring-2 ring-indigo-400' : '' ?>">
             <p class="text-xs font-medium <?= $def['color'] ?> uppercase tracking-wide"><?= $def['label'] ?></p>
             <p class="text-2xl font-bold text-slate-800 mt-1"><?= $cnt ?></p>
             <p class="text-xs text-slate-400 mt-0.5">RM <?= number_format($amt, 2) ?></p>
@@ -187,12 +192,12 @@ require_once '../../views/layout/sidebar.php';
                 </select>
             </div>
             <button type="submit"
-                    class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm inline-flex items-center gap-2">
+                    class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 text-sm inline-flex items-center gap-2">
                 <i class="ti ti-search"></i> Filter
             </button>
             <?php if ($search !== '' || $statusFilter !== '' || $monthFilter > 0 || $yearFilter > 0): ?>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Invoices/index.php"
-               class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 text-sm inline-flex items-center gap-2">
+            <a href="/PTE-MANAGEMENT-SYSTEM/invoices"
+               class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-sm inline-flex items-center gap-2">
                 <i class="ti ti-x"></i> Clear
             </a>
             <?php endif; ?>
@@ -229,8 +234,8 @@ require_once '../../views/layout/sidebar.php';
                 ?>
                 <tr class="border-b border-slate-100 hover:bg-slate-50">
                     <td class="px-4 py-3 font-mono text-xs text-slate-500">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Invoices/show.php?id=<?= (int)$inv['INVOICE_ID'] ?>"
-                           class="font-semibold text-indigo-600 hover:text-indigo-800">
+                        <a href="/PTE-MANAGEMENT-SYSTEM/invoices/show?id=<?= (int)$inv['INVOICE_ID'] ?>"
+                           class="font-semibold text-indigo-600 hover:text-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
                             #<?= str_pad($inv['INVOICE_ID'], 5, '0', STR_PAD_LEFT) ?>
                         </a>
                     </td>
@@ -256,13 +261,13 @@ require_once '../../views/layout/sidebar.php';
                         </span>
                     </td>
                     <td class="px-4 py-3 text-right whitespace-nowrap">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Invoices/show.php?id=<?= (int)$inv['INVOICE_ID'] ?>"
-                           class="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700 text-xs font-medium mr-2">
+                        <a href="/PTE-MANAGEMENT-SYSTEM/invoices/show?id=<?= (int)$inv['INVOICE_ID'] ?>"
+                           class="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1.5 py-1 -mx-1.5 text-xs font-medium mr-1">
                             <i class="ti ti-eye"></i> View
                         </a>
                         <?php if ($inv['STATUS'] !== 'PAID'): ?>
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Payments/record.php?invoice_id=<?= (int)$inv['INVOICE_ID'] ?>"
-                           class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-xs font-medium">
+                        <a href="/PTE-MANAGEMENT-SYSTEM/payments/record?invoice_id=<?= (int)$inv['INVOICE_ID'] ?>"
+                           class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded px-1.5 py-1 -mx-1.5 text-xs font-medium">
                             <i class="ti ti-cash"></i> Pay
                         </a>
                         <?php endif; ?>
@@ -277,14 +282,10 @@ require_once '../../views/layout/sidebar.php';
     <?php if ($totalPages > 1): ?>
     <div class="flex items-center justify-between mt-4 text-sm text-slate-500">
         <span>Showing <?= count($invoices) ?> of <?= $total ?> invoices</span>
-        <div class="flex gap-1">
-            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&status=<?= urlencode($statusFilter) ?>&month=<?= $monthFilter ?>&year=<?= $yearFilter ?>"
-               class="px-3 py-1 rounded-lg <?= $i === $page ? 'bg-indigo-800 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50' ?>">
-                <?= $i ?>
-            </a>
-            <?php endfor; ?>
-        </div>
+        <?php
+            $baseParams = ['search' => $search, 'status' => $statusFilter, 'month' => $monthFilter, 'year' => $yearFilter];
+            require_once '../../views/partials/pagination.php';
+        ?>
     </div>
     <?php endif; ?>
 </main>

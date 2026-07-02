@@ -3,11 +3,11 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 if (!in_array($_SESSION['role'], ['OWNER', 'ADMIN'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Dashboard/index.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/dashboard');
     exit;
 }
 
@@ -64,8 +64,13 @@ try {
     unset($v);
     oci_execute($countStmt);
     $total      = (int)oci_fetch_assoc($countStmt)['TOTAL'];
-    $totalPages = (int)ceil($total / $limit);
+    $totalPages = max(1, (int)ceil($total / $limit));
     oci_free_statement($countStmt);
+
+    if ($page > $totalPages) {
+        $page   = $totalPages;
+        $offset = ($page - 1) * $limit;
+    }
 
     // List
     $sql  = "SELECT c.class_id, c.name, c.fee, c.max_students, c.status,
@@ -102,13 +107,13 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-xl font-semibold text-slate-800">Classes</h1>
             <p class="text-slate-500 text-sm mt-1">Manage all tuition classes</p>
         </div>
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/create.php"
+        <a href="/PTE-MANAGEMENT-SYSTEM/classes/create"
            class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
             <i class="ti ti-plus"></i> Add Class
         </a>
@@ -160,7 +165,7 @@ require_once '../../views/layout/sidebar.php';
                 <i class="ti ti-search"></i> Search
             </button>
             <?php if ($search !== '' || $subject > 0 || $grade > 0 || $status !== ''): ?>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/index.php"
+            <a href="/PTE-MANAGEMENT-SYSTEM/classes"
                class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 text-sm inline-flex items-center gap-2">
                 <i class="ti ti-x"></i> Clear
             </a>
@@ -194,7 +199,7 @@ require_once '../../views/layout/sidebar.php';
                 <?php foreach ($classes as $c): ?>
                 <tr class="border-b border-slate-100 hover:bg-slate-50">
                     <td class="px-4 py-3 font-medium text-slate-800">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/show.php?id=<?= (int)$c['CLASS_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/classes/show?id=<?= (int)$c['CLASS_ID'] ?>"
                            class="hover:text-indigo-700">
                             <?= htmlspecialchars($c['NAME'], ENT_QUOTES, 'UTF-8') ?>
                         </a>
@@ -214,11 +219,11 @@ require_once '../../views/layout/sidebar.php';
                         <?php endif; ?>
                     </td>
                     <td class="px-4 py-3 text-right whitespace-nowrap">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/show.php?id=<?= (int)$c['CLASS_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/classes/show?id=<?= (int)$c['CLASS_ID'] ?>"
                            class="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700 text-xs font-medium mr-2">
                             <i class="ti ti-eye"></i> View
                         </a>
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/edit.php?id=<?= (int)$c['CLASS_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/classes/edit?id=<?= (int)$c['CLASS_ID'] ?>"
                            class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-xs font-medium">
                             <i class="ti ti-pencil"></i> Edit
                         </a>
@@ -233,14 +238,10 @@ require_once '../../views/layout/sidebar.php';
     <?php if ($totalPages > 1): ?>
     <div class="flex items-center justify-between mt-4 text-sm text-slate-500">
         <span>Showing <?= count($classes) ?> of <?= $total ?> classes</span>
-        <div class="flex gap-1">
-            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <a href="?page=<?= $i ?>&search=<?= urlencode($search) ?>&subject=<?= $subject ?>&grade=<?= $grade ?>&status=<?= urlencode($status) ?>"
-               class="px-3 py-1 rounded-lg <?= $i === $page ? 'bg-indigo-800 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50' ?>">
-                <?= $i ?>
-            </a>
-            <?php endfor; ?>
-        </div>
+        <?php
+            $baseParams = ['search' => $search, 'subject' => $subject, 'grade' => $grade, 'status' => $status];
+            require_once '../../views/partials/pagination.php';
+        ?>
     </div>
     <?php endif; ?>
 </main>

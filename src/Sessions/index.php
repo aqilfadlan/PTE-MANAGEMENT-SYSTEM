@@ -3,7 +3,7 @@ session_start();
 require_once '../../config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: /PTE-MANAGEMENT-SYSTEM/src/Auth/login.php');
+    header('Location: /PTE-MANAGEMENT-SYSTEM/login');
     exit;
 }
 
@@ -70,8 +70,13 @@ try {
     unset($v);
     oci_execute($countStmt);
     $total      = (int)oci_fetch_assoc($countStmt)['TOTAL'];
-    $totalPages = (int)ceil($total / $limit);
+    $totalPages = max(1, (int)ceil($total / $limit));
     oci_free_statement($countStmt);
+
+    if ($page > $totalPages) {
+        $page   = $totalPages;
+        $offset = ($page - 1) * $limit;
+    }
 
     // List
     $sql  = "SELECT cs.session_id,
@@ -119,14 +124,14 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="ml-64 p-8 min-h-screen">
+<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-xl font-semibold text-slate-800">Sessions</h1>
             <p class="text-slate-500 text-sm mt-1">All class sessions</p>
         </div>
         <?php if (in_array($role, ['OWNER', 'ADMIN'])): ?>
-        <a href="/PTE-MANAGEMENT-SYSTEM/src/Schedule/generate.php"
+        <a href="/PTE-MANAGEMENT-SYSTEM/schedule/generate"
            class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
             <i class="ti ti-calendar-plus"></i> Generate Sessions
         </a>
@@ -173,7 +178,7 @@ require_once '../../views/layout/sidebar.php';
                 <i class="ti ti-search"></i> Filter
             </button>
             <?php if ($classId > 0 || $statusFilter !== '' || $dateFrom !== '' || $dateTo !== ''): ?>
-            <a href="/PTE-MANAGEMENT-SYSTEM/src/Sessions/index.php"
+            <a href="/PTE-MANAGEMENT-SYSTEM/sessions"
                class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-200 text-sm inline-flex items-center gap-2">
                 <i class="ti ti-x"></i> Clear
             </a>
@@ -213,7 +218,7 @@ require_once '../../views/layout/sidebar.php';
                         <span class="block text-xs text-slate-400"><?= date('D', strtotime($ses['SESSION_DATE'])) ?></span>
                     </td>
                     <td class="px-4 py-3 text-slate-700">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Classes/show.php?id=<?= (int)$ses['CLASS_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/classes/show?id=<?= (int)$ses['CLASS_ID'] ?>"
                            class="hover:text-indigo-700 font-medium">
                             <?= htmlspecialchars($ses['CLASS_NAME'], ENT_QUOTES, 'UTF-8') ?>
                         </a>
@@ -241,12 +246,12 @@ require_once '../../views/layout/sidebar.php';
                         </span>
                     </td>
                     <td class="px-4 py-3 text-right whitespace-nowrap">
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Sessions/show.php?id=<?= (int)$ses['SESSION_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/sessions/show?id=<?= (int)$ses['SESSION_ID'] ?>"
                            class="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700 text-xs font-medium mr-2">
                             <i class="ti ti-eye"></i> View
                         </a>
                         <?php if ($ses['STATUS'] !== 'CANCELLED'): ?>
-                        <a href="/PTE-MANAGEMENT-SYSTEM/src/Attendance/take.php?session_id=<?= (int)$ses['SESSION_ID'] ?>"
+                        <a href="/PTE-MANAGEMENT-SYSTEM/attendance/take?session_id=<?= (int)$ses['SESSION_ID'] ?>"
                            class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-xs font-medium">
                             <i class="ti ti-clipboard-check"></i> Attendance
                         </a>
@@ -262,14 +267,10 @@ require_once '../../views/layout/sidebar.php';
     <?php if ($totalPages > 1): ?>
     <div class="flex items-center justify-between mt-4 text-sm text-slate-500">
         <span>Showing <?= count($sessions) ?> of <?= $total ?> sessions</span>
-        <div class="flex gap-1">
-            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-            <a href="?page=<?= $i ?>&class_id=<?= $classId ?>&status=<?= urlencode($statusFilter) ?>&date_from=<?= urlencode($dateFrom) ?>&date_to=<?= urlencode($dateTo) ?>"
-               class="px-3 py-1 rounded-lg <?= $i === $page ? 'bg-indigo-800 text-white' : 'bg-white border border-slate-200 hover:bg-slate-50' ?>">
-                <?= $i ?>
-            </a>
-            <?php endfor; ?>
-        </div>
+        <?php
+            $baseParams = ['class_id' => $classId, 'status' => $statusFilter, 'date_from' => $dateFrom, 'date_to' => $dateTo];
+            require_once '../../views/partials/pagination.php';
+        ?>
     </div>
     <?php endif; ?>
 </main>
