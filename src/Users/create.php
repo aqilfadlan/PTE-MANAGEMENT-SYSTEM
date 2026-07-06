@@ -111,7 +111,7 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
+<main class="pt-16 md:pt-10 md:ml-64 px-4 sm:px-8 pb-4 sm:pb-8 min-h-screen">
     <div class="mb-6 flex items-center gap-3">
         <a href="/PTE-MANAGEMENT-SYSTEM/users" class="text-slate-400 hover:text-slate-600">
             <i class="ti ti-arrow-left text-lg"></i>

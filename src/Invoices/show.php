@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../../config/database.php';
+require_once '../../config/debug.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: /PTE-MANAGEMENT-SYSTEM/login');
@@ -67,7 +68,12 @@ try {
         throw new \RuntimeException('Item query failed: ' . $e['message']);
     }
     $items = [];
-    while ($r = oci_fetch_assoc($itemStmt)) $items[] = $r;
+    while ($r = oci_fetch_assoc($itemStmt)) {
+        if (!mb_check_encoding($r['DESCRIPTION'], 'UTF-8')) {
+            $r['DESCRIPTION'] = mb_convert_encoding($r['DESCRIPTION'], 'UTF-8', 'Windows-1252');
+        }
+        $items[] = $r;
+    }
     oci_free_statement($itemStmt);
 
     // Payments
@@ -115,7 +121,7 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
+<main class="pt-16 md:pt-10 md:ml-64 px-4 sm:px-8 pb-4 sm:pb-8 min-h-screen">
     <div class="mb-6 flex items-center justify-between">
         <div class="flex items-center gap-3">
             <a href="/PTE-MANAGEMENT-SYSTEM/invoices" class="text-slate-400 hover:text-slate-600">

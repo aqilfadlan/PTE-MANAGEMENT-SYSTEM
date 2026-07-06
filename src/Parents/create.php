@@ -70,7 +70,7 @@ require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
 ?>
 
-<main class="pt-14 md:pt-0 md:ml-64 p-4 sm:p-8 min-h-screen">
+<main class="pt-16 md:pt-10 md:ml-64 px-4 sm:px-8 pb-4 sm:pb-8 min-h-screen">
     <div class="mb-6 flex items-center gap-3">
         <a href="/PTE-MANAGEMENT-SYSTEM/parents" class="text-slate-400 hover:text-slate-600">
             <i class="ti ti-arrow-left text-lg"></i>
@@ -118,6 +118,7 @@ require_once '../../views/layout/sidebar.php';
                 <input type="text" name="ic_number" value="<?= htmlspecialchars($input['ic_number'], ENT_QUOTES, 'UTF-8') ?>"
                        class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'ic_number') ?>"
                        aria-invalid="<?= isset($errors['ic_number']) ? 'true' : 'false' ?>"
+                       data-format="ic" inputmode="numeric" maxlength="14"
                        placeholder="e.g. 800101-01-1234">
                 <?php if (isset($errors['ic_number'])): ?>
                 <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['ic_number'], ENT_QUOTES, 'UTF-8') ?></p>

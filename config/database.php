@@ -16,7 +16,8 @@ function getConnection(): mixed
     $conn = oci_connect(
         $_ENV['DB_USERNAME'],
         $_ENV['DB_PASSWORD'],
-        $_ENV['DB_DSN']
+        $_ENV['DB_DSN'],
+        'AL32UTF8'
     );
 
     if (!$conn) {
