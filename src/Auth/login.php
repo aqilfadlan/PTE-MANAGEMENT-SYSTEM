@@ -62,18 +62,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont/dist/tabler-icons.min.css">
 </head>
-<body class="bg-slate-100 min-h-screen flex items-center justify-center">
+<body class="min-h-screen flex items-center justify-center bg-slate-900 bg-cover bg-center"
+      style="background-image: linear-gradient(180deg, rgba(30,27,60,0.55), rgba(30,27,60,0.72)), url('https://images.unsplash.com/photo-1524178232363-1fb2b075b655?q=80&amp;w=2070');">
 
-<div class="w-full max-w-md">
+<div class="w-full max-w-md px-4">
     <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-14 h-14 bg-indigo-800 rounded-2xl mb-4">
+        <div class="inline-flex items-center justify-center w-14 h-14 bg-indigo-800 rounded-2xl mb-4 shadow-lg">
             <i class="ti ti-books text-white text-2xl"></i>
         </div>
-        <h1 class="text-2xl font-bold text-slate-800">PTE Management System</h1>
-        <p class="text-slate-500 text-sm mt-1">Sign in to your account</p>
+        <h1 class="text-2xl font-bold text-white">PTE Management System</h1>
+        <p class="text-indigo-100 text-sm mt-1">Sign in to your account</p>
     </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 p-8">
         <?php if ($error !== ''): ?>
             <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-5 flex items-center gap-2 text-sm">
                 <i class="ti ti-alert-circle text-base"></i>
