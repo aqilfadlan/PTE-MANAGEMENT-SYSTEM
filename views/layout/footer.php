@@ -1,3 +1,7 @@
+<footer class="md:ml-64 px-4 sm:px-8 py-4 text-center text-xs text-slate-400">
+    &copy; <?= date('Y') ?> PTE Management System. All rights reserved.
+</footer>
+
 <script>
 (function () {
     var viewport = document.getElementById('toast-viewport');

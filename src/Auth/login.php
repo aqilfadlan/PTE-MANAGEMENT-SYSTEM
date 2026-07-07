@@ -117,6 +117,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Sign In
             </button>
         </form>
+
+        <p class="text-center text-xs text-slate-400 mt-6">Powered by Maestro Dinamik</p>
     </div>
 </div>
 

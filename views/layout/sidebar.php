@@ -121,6 +121,15 @@ if (isset($_SESSION['user_id'])) {
             <i class="ti ti-cash text-base"></i> Payments
         </a>
         <?php endif; ?>
+
+        <!-- <?php if ($currentRole === 'OWNER'): ?>
+        <p class="px-3 pt-4 pb-1 text-xs text-indigo-400 uppercase tracking-wide font-medium">System</p>
+
+        <a href="/PTE-MANAGEMENT-SYSTEM/system-test"
+           class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-inset transition <?= isActive('/system-test') ?>">
+            <i class="ti ti-heartbeat text-base"></i> System Test
+        </a>
+        <?php endif; ?> -->
     </nav>
 
     <div class="relative px-3 py-3 border-t border-indigo-700">

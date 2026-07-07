@@ -56,6 +56,8 @@ $routes = [
     '/payments/history'      => 'src/Payments/history.php',
 
     '/receipts/view'         => 'src/Receipts/view.php',
+
+    '/system-test'           => 'src/System/test.php',
 ];
 
 $basePath = '/PTE-MANAGEMENT-SYSTEM';
