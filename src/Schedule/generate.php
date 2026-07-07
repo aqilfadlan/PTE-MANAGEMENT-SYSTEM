@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn = getConnection();
 
             // Fetch schedules for this class within effective range
-            $schSql  = "SELECT schedule_id, daysofweek, start_time, end_time, user_id,
+            $schSql  = "SELECT schedule_id, daysofweek, start_time, end_time,
                                effective_from, effective_to
                         FROM   CLASS_SCHEDULE
                         WHERE  class_id = :class_id

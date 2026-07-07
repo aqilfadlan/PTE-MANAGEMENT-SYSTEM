@@ -17,23 +17,52 @@ if ($classId === 0) {
     exit;
 }
 
-// ── Handle POST: enrol a student ──────────────────────────────────────────────
+// ── Handle POST: enrol one or more students ───────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $studentId = (int)($_POST['student_id'] ?? 0);
-    if ($studentId > 0) {
+    $studentIds = $_POST['student_ids'] ?? ($_POST['student_id'] ?? []);
+    if (!is_array($studentIds)) $studentIds = [$studentIds];
+    $studentIds = array_unique(array_filter(array_map('intval', $studentIds), fn($id) => $id > 0));
+
+    if (!empty($studentIds)) {
         try {
             $conn = getConnection();
-            $sql  = 'INSERT INTO CLASS_STUDENT (class_id, student_id) VALUES (:class_id, :student_id)';
-            $stmt = oci_parse($conn, $sql);
-            oci_bind_by_name($stmt, ':class_id',   $classId);
-            oci_bind_by_name($stmt, ':student_id', $studentId);
-            oci_execute($stmt);
+            $enrolledCount = 0;
+            $skippedCount  = 0;
+
+            foreach ($studentIds as $studentId) {
+                $chkSql  = 'SELECT COUNT(*) AS cnt FROM CLASS_STUDENT WHERE class_id = :class_id AND student_id = :student_id';
+                $chkStmt = oci_parse($conn, $chkSql);
+                oci_bind_by_name($chkStmt, ':class_id',   $classId);
+                oci_bind_by_name($chkStmt, ':student_id', $studentId);
+                oci_execute($chkStmt);
+                $already = (int)oci_fetch_assoc($chkStmt)['CNT'] > 0;
+                oci_free_statement($chkStmt);
+
+                if ($already) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                $sql  = 'INSERT INTO CLASS_STUDENT (class_id, student_id) VALUES (:class_id, :student_id)';
+                $stmt = oci_parse($conn, $sql);
+                oci_bind_by_name($stmt, ':class_id',   $classId);
+                oci_bind_by_name($stmt, ':student_id', $studentId);
+                oci_execute($stmt);
+                oci_free_statement($stmt);
+                $enrolledCount++;
+            }
+
             oci_commit($conn);
-            oci_free_statement($stmt);
             oci_close($conn);
-            $_SESSION['flash_success'] = 'Student enrolled successfully.';
+
+            if ($enrolledCount > 0) {
+                $_SESSION['flash_success'] = $enrolledCount . ' student' . ($enrolledCount === 1 ? '' : 's') . ' enrolled successfully'
+                    . ($skippedCount > 0 ? ", $skippedCount already enrolled." : '.');
+            } else {
+                $_SESSION['flash_error'] = 'Selected student(s) are already enrolled.';
+            }
         } catch (\RuntimeException $e) {
-            $_SESSION['flash_error'] = 'Could not enrol student. They may already be enrolled.';
+            $_SESSION['flash_error'] = 'Could not enrol student(s). Please try again.';
         }
     }
     header('Location: /PTE-MANAGEMENT-SYSTEM/students/enrol?class_id=' . $classId);
@@ -44,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 try {
     $conn = getConnection();
 
-    $sql  = 'SELECT c.class_id, c.name, c.max_students, c.status,
+    $sql  = 'SELECT c.class_id, c.name, c.max_students, c.status, c.grade_id,
                     s.name AS subject_name, g.name AS grade_name
              FROM   CLASS   c
              JOIN   SUBJECT s ON s.subject_id = c.subject_id
@@ -81,9 +110,11 @@ try {
     // Collect enrolled IDs for exclusion
     $enrolledIds = array_column($enrolled, 'STUDENT_ID');
 
-    // Search for students to add
-    $search    = trim($_GET['search'] ?? '');
-    $gradeFilter = (int)($_GET['grade'] ?? 0);
+    // Search for students to add — grade filter defaults to the class's own
+    // grade so staff see relevant students first; "All grades" (grade=0) or
+    // another grade is still explicitly selectable via the dropdown.
+    $search      = trim($_GET['search'] ?? '');
+    $gradeFilter = isset($_GET['grade']) ? (int)$_GET['grade'] : (int)$class['GRADE_ID'];
 
     $where  = 's.student_id NOT IN (SELECT student_id FROM CLASS_STUDENT WHERE class_id = :class_id)';
     $params = [':class_id' => $classId];
@@ -217,6 +248,9 @@ require_once '../../views/layout/sidebar.php';
                         <i class="ti ti-search"></i>
                     </button>
                 </form>
+                <?php if ($gradeFilter === (int)$class['GRADE_ID'] && !isset($_GET['grade'])): ?>
+                <p class="text-xs text-slate-400 mt-2">Showing <?= htmlspecialchars($class['GRADE_NAME'], ENT_QUOTES, 'UTF-8') ?> students by default — switch to "All grades" to enrol from other grades.</p>
+                <?php endif; ?>
             </div>
 
             <?php if (empty($available)): ?>
@@ -224,27 +258,66 @@ require_once '../../views/layout/sidebar.php';
                 <?= ($search !== '' || $gradeFilter > 0) ? 'No matching students found.' : 'All active students are already enrolled.' ?>
             </div>
             <?php else: ?>
-            <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
-                <?php foreach ($available as $s): ?>
-                <div class="px-4 py-3 flex items-center justify-between hover:bg-slate-50">
-                    <div>
-                        <p class="text-sm font-medium text-slate-800"><?= htmlspecialchars($s['FULLNAME'], ENT_QUOTES, 'UTF-8') ?></p>
-                        <p class="text-xs text-slate-400"><?= htmlspecialchars($s['GRADE_NAME'], ENT_QUOTES, 'UTF-8') ?></p>
-                    </div>
-                    <form method="POST">
-                        <input type="hidden" name="student_id" value="<?= (int)$s['STUDENT_ID'] ?>">
-                        <button type="submit"
-                                class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-xs font-medium">
-                            <i class="ti ti-user-plus"></i> Enrol
-                        </button>
-                    </form>
+            <form method="POST" id="bulk-enrol-form">
+                <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                    <label class="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer">
+                        <input type="checkbox" id="select-all-checkbox"
+                               class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
+                        Select all (<?= count($available) ?>)
+                    </label>
+                    <button type="submit" id="bulk-enrol-submit" disabled
+                            class="bg-indigo-100 text-indigo-400 px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5
+                                   disabled:cursor-not-allowed enabled:bg-indigo-800 enabled:text-white enabled:hover:bg-indigo-700 transition">
+                        <i class="ti ti-users-plus"></i> Enrol Selected (<span id="selected-count">0</span>)
+                    </button>
                 </div>
-                <?php endforeach; ?>
-            </div>
+                <div class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                    <?php foreach ($available as $s): ?>
+                    <label class="px-4 py-3 flex items-center gap-3 hover:bg-slate-50 cursor-pointer">
+                        <input type="checkbox" name="student_ids[]" value="<?= (int)$s['STUDENT_ID'] ?>"
+                               class="student-checkbox w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-medium text-slate-800 truncate"><?= htmlspecialchars($s['FULLNAME'], ENT_QUOTES, 'UTF-8') ?></p>
+                            <p class="text-xs text-slate-400"><?= htmlspecialchars($s['GRADE_NAME'], ENT_QUOTES, 'UTF-8') ?></p>
+                        </div>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+            </form>
             <?php endif; ?>
         </div>
 
     </div>
 </main>
+
+<script>
+(function () {
+    var selectAll  = document.getElementById('select-all-checkbox');
+    var checkboxes = document.querySelectorAll('.student-checkbox');
+    var submitBtn  = document.getElementById('bulk-enrol-submit');
+    var countEl    = document.getElementById('selected-count');
+    if (!submitBtn) return;
+
+    function updateState() {
+        var checked = document.querySelectorAll('.student-checkbox:checked').length;
+        countEl.textContent = checked;
+        submitBtn.disabled = checked === 0;
+        if (selectAll) selectAll.checked = checked > 0 && checked === checkboxes.length;
+    }
+
+    checkboxes.forEach(function (cb) {
+        cb.addEventListener('change', updateState);
+    });
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            checkboxes.forEach(function (cb) { cb.checked = selectAll.checked; });
+            updateState();
+        });
+    }
+
+    updateState();
+})();
+</script>
 
 <?php require_once '../../views/layout/footer.php'; ?>

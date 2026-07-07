@@ -24,9 +24,9 @@ try {
 
     // Classes dropdown — tutors see own classes only
     if ($role === 'TUTOR') {
-        $clsSql  = "SELECT class_id, name FROM CLASS WHERE user_id = :uid ORDER BY name";
+        $clsSql  = "SELECT class_id, name FROM CLASS WHERE user_id = :tutor_id ORDER BY name";
         $clsStmt = oci_parse($conn, $clsSql);
-        oci_bind_by_name($clsStmt, ':uid', $userId);
+        oci_bind_by_name($clsStmt, ':tutor_id', $userId);
     } else {
         $clsSql  = 'SELECT class_id, name FROM CLASS ORDER BY name';
         $clsStmt = oci_parse($conn, $clsSql);
@@ -41,8 +41,8 @@ try {
     $params = [];
 
     if ($role === 'TUTOR') {
-        $where .= ' AND cs.user_id = :uid';
-        $params[':uid'] = $userId;
+        $where .= ' AND cs.user_id = :tutor_id';
+        $params[':tutor_id'] = $userId;
     }
     if ($classId > 0) {
         $where .= ' AND c.class_id = :class_id';

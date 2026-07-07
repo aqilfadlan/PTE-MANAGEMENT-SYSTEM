@@ -79,7 +79,7 @@ try {
     // Payments
     $payId   = $invoiceId;
     $paySql  = "SELECT pay.payment_id, pay.amount_paid, pay.method,
-                       pay.reference_no, pay.notes,
+                       pay.reference_no, pay.notes, pay.receipt_token,
                        TO_CHAR(pay.payment_date, 'YYYY-MM-DD') AS payment_date,
                        TO_CHAR(pay.created_at,   'YYYY-MM-DD') AS created_at
                 FROM   PAYMENT pay
@@ -228,6 +228,7 @@ require_once '../../views/layout/sidebar.php';
                             <th class="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Method</th>
                             <th class="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Reference</th>
                             <th class="text-right px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Amount</th>
+                            <th class="text-right px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Receipt</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -237,6 +238,17 @@ require_once '../../views/layout/sidebar.php';
                             <td class="px-4 py-3 text-slate-600"><?= $methodLabels[$pay['METHOD']] ?? $pay['METHOD'] ?></td>
                             <td class="px-4 py-3 text-slate-500 font-mono text-xs"><?= htmlspecialchars($pay['REFERENCE_NO'] ?? '—', ENT_QUOTES, 'UTF-8') ?></td>
                             <td class="px-4 py-3 text-right text-green-600 font-medium">RM <?= number_format((float)$pay['AMOUNT_PAID'], 2) ?></td>
+                            <td class="px-4 py-3 text-right">
+                                <?php if (!empty($pay['RECEIPT_TOKEN'])): ?>
+                                <a href="/PTE-MANAGEMENT-SYSTEM/receipts/view?token=<?= htmlspecialchars($pay['RECEIPT_TOKEN'], ENT_QUOTES, 'UTF-8') ?>"
+                                   target="_blank"
+                                   class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-xs font-medium">
+                                    <i class="ti ti-file-invoice"></i> View
+                                </a>
+                                <?php else: ?>
+                                <span class="text-slate-300 text-xs">—</span>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -244,6 +256,7 @@ require_once '../../views/layout/sidebar.php';
                         <tr>
                             <td colspan="3" class="px-4 py-3 font-semibold text-slate-800 text-right">Total Paid</td>
                             <td class="px-4 py-3 text-right font-bold text-green-600">RM <?= number_format((float)$totalPaid, 2) ?></td>
+                            <td></td>
                         </tr>
                     </tfoot>
                 </table>

@@ -33,24 +33,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($hasTo) {
                 $sql  = "INSERT INTO CLASS_SCHEDULE (class_id, daysofweek, start_time, end_time, effective_from, effective_to)
-                         VALUES (:class_id, :day, :start, :end,
-                                 TO_DATE(:from, 'YYYY-MM-DD'), TO_DATE(:to, 'YYYY-MM-DD'))";
+                         VALUES (:class_id, :day, :start_time, :end_time,
+                                 TO_DATE(:eff_from, 'YYYY-MM-DD'), TO_DATE(:eff_to, 'YYYY-MM-DD'))";
                 $stmt = oci_parse($conn, $sql);
                 oci_bind_by_name($stmt, ':class_id', $id);
-                oci_bind_by_name($stmt, ':day',      $day);
-                oci_bind_by_name($stmt, ':start',    $start);
-                oci_bind_by_name($stmt, ':end',      $end);
-                oci_bind_by_name($stmt, ':from',     $from);
-                oci_bind_by_name($stmt, ':to',       $toRaw);
+                oci_bind_by_name($stmt, ':day',       $day);
+                oci_bind_by_name($stmt, ':start_time',$start);
+                oci_bind_by_name($stmt, ':end_time',  $end);
+                oci_bind_by_name($stmt, ':eff_from',  $from);
+                oci_bind_by_name($stmt, ':eff_to',    $toRaw);
             } else {
                 $sql  = "INSERT INTO CLASS_SCHEDULE (class_id, daysofweek, start_time, end_time, effective_from)
-                         VALUES (:class_id, :day, :start, :end, TO_DATE(:from, 'YYYY-MM-DD'))";
+                         VALUES (:class_id, :day, :start_time, :end_time, TO_DATE(:eff_from, 'YYYY-MM-DD'))";
                 $stmt = oci_parse($conn, $sql);
                 oci_bind_by_name($stmt, ':class_id', $id);
-                oci_bind_by_name($stmt, ':day',      $day);
-                oci_bind_by_name($stmt, ':start',    $start);
-                oci_bind_by_name($stmt, ':end',      $end);
-                oci_bind_by_name($stmt, ':from',     $from);
+                oci_bind_by_name($stmt, ':day',       $day);
+                oci_bind_by_name($stmt, ':start_time',$start);
+                oci_bind_by_name($stmt, ':end_time',  $end);
+                oci_bind_by_name($stmt, ':eff_from',  $from);
             }
             oci_execute($stmt);
             oci_commit($conn);

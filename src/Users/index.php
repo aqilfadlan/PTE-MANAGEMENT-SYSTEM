@@ -47,7 +47,9 @@ try {
         $offset = ($page - 1) * $limit;
     }
 
-    $sql  = "SELECT u.user_id, u.fullname, u.email, u.phone, u.role, u.is_active, u.created_at
+    $sql  = "SELECT u.user_id, u.fullname, u.email, u.phone, u.role, u.is_active, u.created_at,
+                    (SELECT COUNT(*) FROM ADMIN_PROFILE ap WHERE ap.user_id = u.user_id) AS IS_ADMIN,
+                    (SELECT COUNT(*) FROM TUTOR_PROFILE tp WHERE tp.user_id = u.user_id) AS IS_TUTOR
              FROM   USERS u
              $where
              ORDER  BY u.created_at DESC
@@ -145,6 +147,9 @@ require_once '../../views/layout/sidebar.php';
                     <td class="px-4 py-3 text-slate-600"><?= htmlspecialchars($u['EMAIL'], ENT_QUOTES, 'UTF-8') ?></td>
                     <td class="px-4 py-3 text-slate-600"><?= htmlspecialchars($u['PHONE'] ?? '—', ENT_QUOTES, 'UTF-8') ?></td>
                     <td class="px-4 py-3">
+                        <?php if ((int)$u['IS_ADMIN'] > 0 && (int)$u['IS_TUTOR'] > 0): ?>
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Admin + Tutor</span>
+                        <?php else: ?>
                         <?php
                         $roleColors = ['ADMIN' => 'bg-indigo-100 text-indigo-700', 'TUTOR' => 'bg-blue-100 text-blue-700'];
                         $rc = $roleColors[$u['ROLE']] ?? 'bg-slate-100 text-slate-600';
@@ -152,6 +157,7 @@ require_once '../../views/layout/sidebar.php';
                         <span class="px-2 py-0.5 rounded-full text-xs font-medium <?= $rc ?>">
                             <?= htmlspecialchars($u['ROLE'], ENT_QUOTES, 'UTF-8') ?>
                         </span>
+                        <?php endif; ?>
                     </td>
                     <td class="px-4 py-3">
                         <?php if ($u['IS_ACTIVE'] == 1): ?>

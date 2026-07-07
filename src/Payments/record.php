@@ -1,6 +1,11 @@
 <?php
 session_start();
 require_once '../../config/database.php';
+require_once '../../vendor/autoload.php';
+require_once '../Receipts/functions.php';
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception as PHPMailerException;
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: /PTE-MANAGEMENT-SYSTEM/login');
@@ -103,21 +108,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $newStatus = $invoice['STATUS'];
             }
 
-            // Insert payment
+            // Insert payment — generate a receipt token now so the receipt
+            // link works immediately without a second update statement
+            $receiptToken = bin2hex(random_bytes(32));
+
             $paySql  = "INSERT INTO PAYMENT
-                            (invoice_id, amount_paid, method, payment_date, reference_no, notes)
+                            (invoice_id, amount_paid, method, payment_date, reference_no, notes, receipt_token)
                         VALUES
                             (:invoice_id, :amount_paid, :method,
-                             TO_DATE(:payment_date, 'YYYY-MM-DD'), :reference_no, :notes)";
+                             TO_DATE(:payment_date, 'YYYY-MM-DD'), :reference_no, :notes, :receipt_token)
+                        RETURNING payment_id INTO :new_payment_id";
             $payStmt = oci_parse($conn, $paySql);
-            oci_bind_by_name($payStmt, ':invoice_id',  $invoiceId);
-            oci_bind_by_name($payStmt, ':amount_paid', $paid);
-            oci_bind_by_name($payStmt, ':method',      $method);
-            oci_bind_by_name($payStmt, ':payment_date',$paymentDate);
-            oci_bind_by_name($payStmt, ':reference_no',$referenceNo);
-            oci_bind_by_name($payStmt, ':notes',       $notes);
+            oci_bind_by_name($payStmt, ':invoice_id',    $invoiceId);
+            oci_bind_by_name($payStmt, ':amount_paid',   $paid);
+            oci_bind_by_name($payStmt, ':method',        $method);
+            oci_bind_by_name($payStmt, ':payment_date',  $paymentDate);
+            oci_bind_by_name($payStmt, ':reference_no',  $referenceNo);
+            oci_bind_by_name($payStmt, ':notes',         $notes);
+            oci_bind_by_name($payStmt, ':receipt_token', $receiptToken);
+            oci_bind_by_name($payStmt, ':new_payment_id', $newPaymentId, 20);
             oci_execute($payStmt);
             oci_free_statement($payStmt);
+            $newPaymentId = (int)$newPaymentId;
 
             // Update invoice status
             $updSql  = 'UPDATE INVOICE SET status = :status, updated_at = SYSTIMESTAMP WHERE invoice_id = :id';
@@ -128,9 +140,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             oci_free_statement($updStmt);
 
             oci_commit($conn);
+
+            // Generate the PDF receipt and email it to the parent (best-effort —
+            // a failure here should not roll back or block the payment record)
+            $receiptEmailed = false;
+            try {
+                $receiptData = fetchReceiptData($conn, $newPaymentId);
+                if ($receiptData) {
+                    generateReceiptPdf($receiptData['payment'], $receiptData['invoice'], $receiptData['items']);
+
+                    $parentEmail = $receiptData['invoice']['PARENT_EMAIL'] ?? '';
+                    if (!empty($parentEmail)) {
+                        $receiptUrl = 'http://localhost/PTE-MANAGEMENT-SYSTEM/receipts/view?token=' . $receiptToken;
+
+                        $mail = new PHPMailer(true);
+                        $mail->isSMTP();
+                        $mail->Host       = 'sandbox.smtp.mailtrap.io';
+                        $mail->SMTPAuth   = true;
+                        $mail->Username   = 'd5588ee6cae646';
+                        $mail->Password   = 'd01949952c3a34';
+                        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                        $mail->Port       = 2525;
+
+                        $mail->setFrom('no-reply@pte-management.local', 'PTE Management System');
+                        $mail->addAddress($parentEmail, $receiptData['invoice']['PARENT_NAME']);
+                        $mail->isHTML(true);
+                        $mail->Subject = 'Payment Receipt — RM ' . number_format($paid, 2);
+                        $mail->Body    = '
+                            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+                                <h2 style="color:#3730a3;">PTE Management System</h2>
+                                <p>Hi ' . htmlspecialchars($receiptData['invoice']['PARENT_NAME'], ENT_QUOTES, 'UTF-8') . ',</p>
+                                <p>We have received your payment of <strong>RM ' . number_format($paid, 2) . '</strong>. Thank you!</p>
+                                <p style="text-align:center;margin:24px 0;">
+                                    <a href="' . htmlspecialchars($receiptUrl, ENT_QUOTES, 'UTF-8') . '"
+                                       style="background:#3730a3;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
+                                        View &amp; Download Receipt
+                                    </a>
+                                </p>
+                                <p style="color:#64748b;font-size:13px;">If the button doesn\'t work, copy this link into your browser:<br>' . htmlspecialchars($receiptUrl, ENT_QUOTES, 'UTF-8') . '</p>
+                            </div>';
+                        $mail->AltBody = "We have received your payment of RM " . number_format($paid, 2) . ".\n\nView your receipt: $receiptUrl";
+                        $mail->send();
+                        $receiptEmailed = true;
+                    }
+                }
+            } catch (\Throwable $mailEx) {
+                // Receipt/email failure must not affect the payment record itself
+            }
+
             oci_close($conn);
 
-            $_SESSION['flash_success'] = 'Payment of RM ' . number_format($paid, 2) . ' recorded. Invoice is now ' . strtolower($newStatus) . '.';
+            $_SESSION['flash_success'] = 'Payment of RM ' . number_format($paid, 2) . ' recorded. Invoice is now ' . strtolower($newStatus) . '.'
+                . ($receiptEmailed ? ' Receipt emailed to parent.' : '');
             header('Location: /PTE-MANAGEMENT-SYSTEM/invoices/show?id=' . $invoiceId);
             exit;
         } catch (\RuntimeException $e) {

@@ -16,7 +16,8 @@ $input  = [
     'fullname'       => '',
     'email'          => '',
     'phone'          => '',
-    'role'           => '',
+    'is_admin'       => false,
+    'is_tutor'       => false,
     'password'       => '',
     'department'     => '',
     'qualification'  => '',
@@ -27,7 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input['fullname']       = trim($_POST['fullname'] ?? '');
     $input['email']          = trim($_POST['email'] ?? '');
     $input['phone']          = trim($_POST['phone'] ?? '');
-    $input['role']           = $_POST['role'] ?? '';
+    $input['is_admin']       = isset($_POST['is_admin']);
+    $input['is_tutor']       = isset($_POST['is_tutor']);
     $input['password']       = $_POST['password'] ?? '';
     $input['department']     = trim($_POST['department'] ?? '');
     $input['qualification']  = trim($_POST['qualification'] ?? '');
@@ -37,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($input['fullname'] === '') $errors['fullname'] = 'Full name is required.';
     if ($input['email'] === '')    $errors['email'] = 'Email is required.';
     elseif (!filter_var($input['email'], FILTER_VALIDATE_EMAIL)) $errors['email'] = 'Invalid email address.';
-    if (!in_array($input['role'], ['ADMIN', 'TUTOR'])) $errors['role'] = 'Role must be Admin or Tutor.';
+    if (!$input['is_admin'] && !$input['is_tutor']) $errors['role'] = 'Select at least one role: Admin or Tutor.';
     if (strlen($input['password']) < 8) $errors['password'] = 'Password must be at least 8 characters.';
     elseif ($input['password'] !== $confirm) $errors['password_confirm'] = 'Passwords do not match.';
 
@@ -56,6 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors['email'] = 'That email address is already in use.';
             } else {
                 $hash = password_hash($input['password'], PASSWORD_BCRYPT);
+                // ROLE is single-valued (OWNER/ADMIN/TUTOR) and drives route
+                // access guards; a user checked for both roles still needs
+                // one primary ROLE, so Admin takes priority as the more
+                // privileged of the two. The profile tables below are what
+                // actually determine which dashboard(s) they see.
+                $primaryRole = $input['is_admin'] ? 'ADMIN' : 'TUTOR';
 
                 $sql  = 'INSERT INTO USERS (fullname, email, phone, password_hash, role)
                          VALUES (:fullname, :email, :phone, :hash, :role)';
@@ -64,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 oci_bind_by_name($stmt, ':email',    $input['email']);
                 oci_bind_by_name($stmt, ':phone',    $input['phone']);
                 oci_bind_by_name($stmt, ':hash',     $hash);
-                oci_bind_by_name($stmt, ':role',     $input['role']);
+                oci_bind_by_name($stmt, ':role',     $primaryRole);
                 oci_execute($stmt);
                 oci_free_statement($stmt);
 
@@ -74,23 +82,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $newId = (int)oci_fetch_assoc($newIdStmt)['USER_ID'];
                 oci_free_statement($newIdStmt);
 
-                if ($input['role'] === 'ADMIN') {
+                if ($input['is_admin']) {
                     $dept     = $input['department'] !== '' ? $input['department'] : null;
-                    $profSql  = 'INSERT INTO ADMIN_PROFILE (user_id, department) VALUES (:uid, :dept)';
+                    $profSql  = 'INSERT INTO ADMIN_PROFILE (user_id, department) VALUES (:new_uid, :dept)';
                     $profStmt = oci_parse($conn, $profSql);
-                    oci_bind_by_name($profStmt, ':uid',  $newId);
-                    oci_bind_by_name($profStmt, ':dept', $dept);
-                } else {
+                    oci_bind_by_name($profStmt, ':new_uid', $newId);
+                    oci_bind_by_name($profStmt, ':dept',    $dept);
+                    oci_execute($profStmt);
+                    oci_free_statement($profStmt);
+                }
+                if ($input['is_tutor']) {
                     $qual     = $input['qualification']  !== '' ? $input['qualification']  : null;
                     $spec     = $input['specialisation'] !== '' ? $input['specialisation'] : null;
-                    $profSql  = 'INSERT INTO TUTOR_PROFILE (user_id, qualification, specialisation) VALUES (:uid, :qual, :spec)';
+                    $profSql  = 'INSERT INTO TUTOR_PROFILE (user_id, qualification, specialisation) VALUES (:new_uid, :qual, :spec)';
                     $profStmt = oci_parse($conn, $profSql);
-                    oci_bind_by_name($profStmt, ':uid',  $newId);
-                    oci_bind_by_name($profStmt, ':qual', $qual);
-                    oci_bind_by_name($profStmt, ':spec', $spec);
+                    oci_bind_by_name($profStmt, ':new_uid', $newId);
+                    oci_bind_by_name($profStmt, ':qual',    $qual);
+                    oci_bind_by_name($profStmt, ':spec',    $spec);
+                    oci_execute($profStmt);
+                    oci_free_statement($profStmt);
                 }
-                oci_execute($profStmt);
-                oci_free_statement($profStmt);
 
                 oci_commit($conn);
                 oci_close($conn);
@@ -174,14 +185,21 @@ require_once '../../views/layout/sidebar.php';
 
             <div class="mb-4">
                 <label class="block text-sm font-medium text-slate-700 mb-1">Role <span class="text-red-500">*</span></label>
-                <select name="role" id="role-select"
-                        class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'role') ?>"
-                        aria-invalid="<?= isset($errors['role']) ? 'true' : 'false' ?>"
-                        onchange="toggleRoleFields(this.value)">
-                    <option value="">Select role…</option>
-                    <option value="ADMIN" <?= $input['role'] === 'ADMIN' ? 'selected' : '' ?>>Admin</option>
-                    <option value="TUTOR" <?= $input['role'] === 'TUTOR' ? 'selected' : '' ?>>Tutor</option>
-                </select>
+                <div class="flex gap-4">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="is_admin" id="is-admin-check" value="1" <?= $input['is_admin'] ? 'checked' : '' ?>
+                               class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                               onchange="toggleRoleFields()">
+                        <span class="text-sm text-slate-700">Admin</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="is_tutor" id="is-tutor-check" value="1" <?= $input['is_tutor'] ? 'checked' : '' ?>
+                               class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                               onchange="toggleRoleFields()">
+                        <span class="text-sm text-slate-700">Tutor</span>
+                    </label>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Select one or both — a user can be both an admin and a tutor.</p>
                 <?php if (isset($errors['role'])): ?>
                 <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['role'], ENT_QUOTES, 'UTF-8') ?></p>
                 <?php endif; ?>
@@ -248,12 +266,14 @@ require_once '../../views/layout/sidebar.php';
 </main>
 
 <script>
-function toggleRoleFields(role) {
-    document.getElementById('admin-fields').classList.toggle('hidden', role !== 'ADMIN');
-    document.getElementById('tutor-fields').classList.toggle('hidden', role !== 'TUTOR');
+function toggleRoleFields() {
+    var isAdmin = document.getElementById('is-admin-check').checked;
+    var isTutor = document.getElementById('is-tutor-check').checked;
+    document.getElementById('admin-fields').classList.toggle('hidden', !isAdmin);
+    document.getElementById('tutor-fields').classList.toggle('hidden', !isTutor);
 }
 // Restore state on page reload after validation error
-toggleRoleFields('<?= htmlspecialchars($input['role'], ENT_QUOTES, 'UTF-8') ?>');
+toggleRoleFields();
 </script>
 
 <?php require_once '../../views/layout/footer.php'; ?>

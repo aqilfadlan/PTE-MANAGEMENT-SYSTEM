@@ -217,6 +217,182 @@ if ($role === 'OWNER') {
     }
 }
 
+$isAdmin = false;
+$isTutor = false;
+
+if ($role === 'ADMIN' || $role === 'TUTOR') {
+    $userId = (int)$_SESSION['user_id'];
+
+    try {
+        $conn = getConnection();
+
+        // A user's dashboard content is driven by which profile rows they
+        // actually hold, not just USERS.ROLE — a user can be provisioned
+        // with both an ADMIN_PROFILE and a TUTOR_PROFILE row.
+        $profChkSql  = "SELECT
+                            (SELECT COUNT(*) FROM ADMIN_PROFILE WHERE user_id = :uid1) AS IS_ADMIN,
+                            (SELECT COUNT(*) FROM TUTOR_PROFILE WHERE user_id = :uid2) AS IS_TUTOR
+                        FROM DUAL";
+        $profChkStmt = oci_parse($conn, $profChkSql);
+        oci_bind_by_name($profChkStmt, ':uid1', $userId);
+        oci_bind_by_name($profChkStmt, ':uid2', $userId);
+        oci_execute($profChkStmt);
+        $profChk = oci_fetch_assoc($profChkStmt);
+        oci_free_statement($profChkStmt);
+        $isAdmin = (int)$profChk['IS_ADMIN'] > 0;
+        $isTutor = (int)$profChk['IS_TUTOR'] > 0;
+
+        // Fall back to ROLE if somehow neither profile row exists yet
+        if (!$isAdmin && !$isTutor) {
+            if ($role === 'ADMIN') $isAdmin = true;
+            if ($role === 'TUTOR') $isTutor = true;
+        }
+
+        if ($isAdmin) {
+            $adminKpiSql = "SELECT
+                                (SELECT COUNT(*) FROM STUDENT WHERE STATUS = 'ACTIVE') AS ACTIVE_STUDENTS,
+                                (SELECT COUNT(*) FROM CLASS   WHERE STATUS = 'ACTIVE') AS ACTIVE_CLASSES,
+                                (SELECT COUNT(*) FROM PARENT)                          AS TOTAL_PARENTS
+                            FROM DUAL";
+            $adminKpiStmt = oci_parse($conn, $adminKpiSql);
+            oci_execute($adminKpiStmt);
+            $adminKpi = oci_fetch_assoc($adminKpiStmt);
+            oci_free_statement($adminKpiStmt);
+
+            $adminInvSql = "SELECT i.status, COUNT(*) AS CNT
+                            FROM   INVOICE i
+                            GROUP  BY i.status";
+            $adminInvStmt = oci_parse($conn, $adminInvSql);
+            oci_execute($adminInvStmt);
+            $adminInvoiceSummary = ['UNPAID' => 0, 'PARTIAL' => 0, 'PAID' => 0, 'OVERDUE' => 0];
+            while ($r = oci_fetch_assoc($adminInvStmt)) $adminInvoiceSummary[$r['STATUS']] = (int)$r['CNT'];
+            oci_free_statement($adminInvStmt);
+
+            $adminGradeSql = "SELECT g.name AS GRADE_NAME, COUNT(s.student_id) AS CNT
+                              FROM   GRADE g
+                              LEFT   JOIN STUDENT s ON s.grade_id = g.grade_id AND s.status = 'ACTIVE'
+                              GROUP  BY g.name, g.grade_level
+                              ORDER  BY g.grade_level";
+            $adminGradeStmt = oci_parse($conn, $adminGradeSql);
+            oci_execute($adminGradeStmt);
+            $adminByGrade = [];
+            while ($r = oci_fetch_assoc($adminGradeStmt)) $adminByGrade[] = $r;
+            oci_free_statement($adminGradeStmt);
+
+            $adminTodaySql = "SELECT cs.session_id, cs.start_time, cs.end_time,
+                                     c.name AS CLASS_NAME, u.fullname AS TUTOR_NAME
+                              FROM   CLASS_SESSION cs
+                              JOIN   CLASS c ON c.class_id = cs.class_id
+                              JOIN   USERS u ON u.user_id  = cs.user_id
+                              WHERE  cs.session_date = TRUNC(SYSDATE)
+                              AND    cs.status = 'SCHEDULED'
+                              ORDER  BY cs.start_time";
+            $adminTodayStmt = oci_parse($conn, $adminTodaySql);
+            oci_execute($adminTodayStmt);
+            $adminTodaySessions = [];
+            while ($r = oci_fetch_assoc($adminTodayStmt)) $adminTodaySessions[] = $r;
+            oci_free_statement($adminTodayStmt);
+        }
+
+        if ($isTutor) {
+            $tutorKpiSql = "SELECT
+                                (SELECT COUNT(*) FROM CLASS WHERE user_id = :uid1 AND status = 'ACTIVE') AS ACTIVE_CLASSES,
+                                (SELECT COUNT(DISTINCT cst.student_id)
+                                   FROM CLASS_STUDENT cst
+                                   JOIN CLASS c ON c.class_id = cst.class_id
+                                  WHERE c.user_id = :uid2 AND c.status = 'ACTIVE') AS TOTAL_STUDENTS
+                            FROM DUAL";
+            $tutorKpiStmt = oci_parse($conn, $tutorKpiSql);
+            oci_bind_by_name($tutorKpiStmt, ':uid1', $userId);
+            oci_bind_by_name($tutorKpiStmt, ':uid2', $userId);
+            oci_execute($tutorKpiStmt);
+            $tutorKpi = oci_fetch_assoc($tutorKpiStmt);
+            oci_free_statement($tutorKpiStmt);
+
+            $tutorTodaySql = "SELECT cs.session_id, cs.start_time, cs.end_time, c.name AS CLASS_NAME
+                              FROM   CLASS_SESSION cs
+                              JOIN   CLASS c ON c.class_id = cs.class_id
+                              WHERE  cs.user_id = :tutor_id
+                              AND    cs.session_date = TRUNC(SYSDATE)
+                              AND    cs.status = 'SCHEDULED'
+                              ORDER  BY cs.start_time";
+            $tutorTodayStmt = oci_parse($conn, $tutorTodaySql);
+            oci_bind_by_name($tutorTodayStmt, ':tutor_id', $userId);
+            oci_execute($tutorTodayStmt);
+            $tutorTodaySessions = [];
+            while ($r = oci_fetch_assoc($tutorTodayStmt)) $tutorTodaySessions[] = $r;
+            oci_free_statement($tutorTodayStmt);
+            $tutorNowTime = date('H:i');
+            $tutorNextSession = null;
+            foreach ($tutorTodaySessions as $s) {
+                if ($s['START_TIME'] >= $tutorNowTime) { $tutorNextSession = $s; break; }
+            }
+
+            $tutorAttSql = "SELECT sa.status, COUNT(*) AS CNT
+                            FROM   STUDENT_ATTENDANCE sa
+                            JOIN   CLASS_SESSION cs ON cs.session_id = sa.session_id
+                            WHERE  cs.user_id = :tutor_id
+                            AND    cs.session_date >= TRUNC(SYSDATE) - 30
+                            GROUP  BY sa.status";
+            $tutorAttStmt = oci_parse($conn, $tutorAttSql);
+            oci_bind_by_name($tutorAttStmt, ':tutor_id', $userId);
+            oci_execute($tutorAttStmt);
+            $tutorAttendance = ['PRESENT' => 0, 'ABSENT' => 0, 'LATE' => 0];
+            while ($r = oci_fetch_assoc($tutorAttStmt)) $tutorAttendance[$r['STATUS']] = (int)$r['CNT'];
+            oci_free_statement($tutorAttStmt);
+            $tutorTotalAttendance = $tutorAttendance['PRESENT'] + $tutorAttendance['ABSENT'] + $tutorAttendance['LATE'];
+            $tutorAttendanceRate  = $tutorTotalAttendance > 0 ? round($tutorAttendance['PRESENT'] / $tutorTotalAttendance * 100) : 0;
+
+            $tutorUpcomingSql = "SELECT cs.session_id, cs.session_date, cs.start_time, cs.end_time, c.name AS CLASS_NAME
+                                 FROM   CLASS_SESSION cs
+                                 JOIN   CLASS c ON c.class_id = cs.class_id
+                                 WHERE  cs.user_id = :tutor_id
+                                 AND    cs.status = 'SCHEDULED'
+                                 AND    cs.session_date >= TRUNC(SYSDATE)
+                                 ORDER  BY cs.session_date, cs.start_time
+                                 OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY";
+            $tutorUpcomingStmt = oci_parse($conn, $tutorUpcomingSql);
+            oci_bind_by_name($tutorUpcomingStmt, ':tutor_id', $userId);
+            oci_execute($tutorUpcomingStmt);
+            $tutorUpcoming = [];
+            while ($r = oci_fetch_assoc($tutorUpcomingStmt)) $tutorUpcoming[] = $r;
+            oci_free_statement($tutorUpcomingStmt);
+
+            // All of this tutor's sessions in the current calendar month, for the mini calendar
+            $tutorMonthSql = "SELECT cs.session_id, TO_CHAR(cs.session_date, 'YYYY-MM-DD') AS session_date,
+                                     cs.start_time, cs.end_time, cs.status, c.name AS CLASS_NAME
+                              FROM   CLASS_SESSION cs
+                              JOIN   CLASS c ON c.class_id = cs.class_id
+                              WHERE  cs.user_id = :tutor_id3
+                              AND    cs.session_date >= TRUNC(SYSDATE, 'MM')
+                              AND    cs.session_date <  ADD_MONTHS(TRUNC(SYSDATE, 'MM'), 1)
+                              ORDER  BY cs.session_date, cs.start_time";
+            $tutorMonthStmt = oci_parse($conn, $tutorMonthSql);
+            oci_bind_by_name($tutorMonthStmt, ':tutor_id3', $userId);
+            oci_execute($tutorMonthStmt);
+            $tutorMonthSessions = [];
+            while ($r = oci_fetch_assoc($tutorMonthStmt)) {
+                $day = (int)date('j', strtotime($r['SESSION_DATE']));
+                $tutorMonthSessions[$day][] = $r;
+            }
+            oci_free_statement($tutorMonthStmt);
+        }
+
+        oci_close($conn);
+    } catch (\RuntimeException $e) {
+        $adminKpi = ['ACTIVE_STUDENTS' => 0, 'ACTIVE_CLASSES' => 0, 'TOTAL_PARENTS' => 0];
+        $adminInvoiceSummary = ['UNPAID' => 0, 'PARTIAL' => 0, 'PAID' => 0, 'OVERDUE' => 0];
+        $adminByGrade = [];
+        $adminTodaySessions = [];
+        $tutorKpi = ['ACTIVE_CLASSES' => 0, 'TOTAL_STUDENTS' => 0];
+        $tutorTodaySessions = []; $tutorNextSession = null;
+        $tutorAttendance = ['PRESENT' => 0, 'ABSENT' => 0, 'LATE' => 0];
+        $tutorTotalAttendance = 0; $tutorAttendanceRate = 0;
+        $tutorUpcoming = [];
+        $tutorMonthSessions = [];
+    }
+}
+
 $pageTitle = 'Dashboard — PTE Management System';
 require_once '../../views/layout/header.php';
 require_once '../../views/layout/sidebar.php';
@@ -696,55 +872,395 @@ require_once '../../views/layout/sidebar.php';
 
     <?php else: ?>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+    <?php if ($isAdmin): ?>
+    <!-- ===================== ADMIN SECTION ===================== -->
+    <?php if ($isTutor): ?>
+    <p class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-3 flex items-center gap-2">
+        <i class="ti ti-settings text-indigo-700"></i> Admin Overview
+    </p>
+    <?php endif; ?>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
             <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
                     <i class="ti ti-school text-indigo-800 text-xl"></i>
                 </div>
-                <div>
-                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Students</p>
-                    <p class="text-2xl font-bold text-slate-800">—</p>
+                <div class="min-w-0">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Active Students</p>
+                    <p class="text-2xl font-bold text-slate-800"><?= (int)$adminKpi['ACTIVE_STUDENTS'] ?></p>
                 </div>
             </div>
         </div>
 
-        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
             <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
                     <i class="ti ti-books text-indigo-800 text-xl"></i>
                 </div>
-                <div>
-                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Classes</p>
-                    <p class="text-2xl font-bold text-slate-800">—</p>
+                <div class="min-w-0">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Active Classes</p>
+                    <p class="text-2xl font-bold text-slate-800"><?= (int)$adminKpi['ACTIVE_CLASSES'] ?></p>
                 </div>
             </div>
         </div>
 
-        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
             <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+                    <i class="ti ti-user-heart text-indigo-800 text-xl"></i>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Parents</p>
+                    <p class="text-2xl font-bold text-slate-800"><?= (int)$adminKpi['TOTAL_PARENTS'] ?></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+            <?php $adminUrgent = (int)$adminInvoiceSummary['UNPAID'] + (int)$adminInvoiceSummary['OVERDUE']; ?>
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
                     <i class="ti ti-file-invoice text-indigo-800 text-xl"></i>
                 </div>
-                <div>
-                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Unpaid Invoices</p>
-                    <p class="text-2xl font-bold text-slate-800">—</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-            <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center">
-                    <i class="ti ti-users text-indigo-800 text-xl"></i>
-                </div>
-                <div>
-                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Tutors</p>
-                    <p class="text-2xl font-bold text-slate-800">—</p>
+                <div class="min-w-0">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Unpaid + Overdue</p>
+                    <p class="text-2xl font-bold text-slate-800"><?= $adminUrgent ?></p>
                 </div>
             </div>
         </div>
     </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <!-- Students by grade -->
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+            <p class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Students by Grade</p>
+            <?php if (empty($adminByGrade)): ?>
+            <p class="text-slate-400 text-sm text-center py-6">No grades set up.</p>
+            <?php else: ?>
+            <div class="h-40"><canvas id="chart-admin-grade-bars"></canvas></div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Today's sessions across the centre -->
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <p class="text-sm font-medium text-slate-500 uppercase tracking-wide">Today's Sessions</p>
+                <span class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                    <i class="ti ti-calendar-event text-amber-600 text-sm"></i>
+                </span>
+            </div>
+            <?php if (empty($adminTodaySessions)): ?>
+            <p class="text-slate-400 text-sm text-center py-6">No sessions scheduled today.</p>
+            <?php else: ?>
+            <div class="space-y-2.5 max-h-40 overflow-y-auto">
+                <?php foreach ($adminTodaySessions as $s): ?>
+                <div class="flex items-center justify-between text-sm">
+                    <div class="min-w-0">
+                        <p class="text-slate-700 font-medium truncate"><?= htmlspecialchars($s['CLASS_NAME'], ENT_QUOTES, 'UTF-8') ?></p>
+                        <p class="text-xs text-slate-400 truncate"><?= htmlspecialchars($s['TUTOR_NAME'], ENT_QUOTES, 'UTF-8') ?></p>
+                    </div>
+                    <span class="text-xs text-slate-500 shrink-0 ml-2"><?= htmlspecialchars($s['START_TIME'], ENT_QUOTES, 'UTF-8') ?></span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+            <p class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Quick Actions</p>
+            <div class="grid grid-cols-2 gap-2">
+                <a href="/PTE-MANAGEMENT-SYSTEM/students/create"
+                   class="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition p-3 text-center">
+                    <i class="ti ti-user-plus text-indigo-700 text-lg"></i>
+                    <span class="text-xs font-medium text-slate-700">Add Student</span>
+                </a>
+                <a href="/PTE-MANAGEMENT-SYSTEM/invoices/generate"
+                   class="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition p-3 text-center">
+                    <i class="ti ti-file-plus text-indigo-700 text-lg"></i>
+                    <span class="text-xs font-medium text-slate-700">Generate Invoice</span>
+                </a>
+                <a href="/PTE-MANAGEMENT-SYSTEM/invoices"
+                   class="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition p-3 text-center">
+                    <i class="ti ti-cash text-indigo-700 text-lg"></i>
+                    <span class="text-xs font-medium text-slate-700">Record Payment</span>
+                </a>
+                <a href="/PTE-MANAGEMENT-SYSTEM/schedule/generate"
+                   class="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition p-3 text-center">
+                    <i class="ti ti-calendar-plus text-indigo-700 text-lg"></i>
+                    <span class="text-xs font-medium text-slate-700">Generate Sessions</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <?php
+        $adminGradeLabels = array_map(fn($g) => $g['GRADE_NAME'], $adminByGrade);
+        $adminGradeData   = array_map(fn($g) => (int)$g['CNT'], $adminByGrade);
+    ?>
+    <script>
+    (function () {
+        var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var animDuration = reduceMotion ? 0 : 600;
+        Chart.defaults.font.family = "system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+        Chart.defaults.color = '#64748b';
+
+        var adminGradeEl = document.getElementById('chart-admin-grade-bars');
+        if (adminGradeEl) {
+            new Chart(adminGradeEl, {
+                type: 'bar',
+                data: {
+                    labels: <?= json_encode($adminGradeLabels) ?>,
+                    datasets: [{
+                        data: <?= json_encode($adminGradeData) ?>,
+                        backgroundColor: '#4338ca',
+                        borderRadius: 4,
+                        maxBarThickness: 28,
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: { duration: animDuration, easing: 'easeOutQuart' },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#ffffff', titleColor: '#1e293b', bodyColor: '#1e293b',
+                            borderColor: '#e2e8f0', borderWidth: 1, padding: 10, cornerRadius: 8, displayColors: false,
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                        y: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 11 }, precision: 0 } }
+                    }
+                }
+            });
+        }
+    })();
+    </script>
+    <?php endif; ?>
+
+    <?php if ($isTutor): ?>
+    <!-- ===================== TUTOR SECTION ===================== -->
+    <?php if ($isAdmin): ?>
+    <p class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-3 mt-2 flex items-center gap-2">
+        <i class="ti ti-books text-indigo-700"></i> Tutor Overview
+    </p>
+    <?php endif; ?>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+                    <i class="ti ti-books text-indigo-800 text-xl"></i>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">My Active Classes</p>
+                    <p class="text-2xl font-bold text-slate-800"><?= (int)$tutorKpi['ACTIVE_CLASSES'] ?></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+                    <i class="ti ti-school text-indigo-800 text-xl"></i>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">My Students</p>
+                    <p class="text-2xl font-bold text-slate-800"><?= (int)$tutorKpi['TOTAL_STUDENTS'] ?></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
+                    <i class="ti ti-calendar-event text-amber-600 text-xl"></i>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Today's Sessions</p>
+                    <p class="text-2xl font-bold text-slate-800"><?= count($tutorTodaySessions) ?></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+                    <i class="ti ti-clipboard-check text-indigo-800 text-xl"></i>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Attendance Rate (30d)</p>
+                    <p class="text-2xl font-bold text-slate-800"><?= $tutorTotalAttendance > 0 ? $tutorAttendanceRate . '%' : '—' ?></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <!-- Next up / today's agenda -->
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <p class="text-sm font-medium text-slate-500 uppercase tracking-wide">Next Up</p>
+                <span class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                    <i class="ti ti-clock text-amber-600 text-sm"></i>
+                </span>
+            </div>
+            <?php if (!$tutorNextSession): ?>
+            <p class="text-slate-400 text-sm text-center py-6">No more sessions scheduled today.</p>
+            <?php else: ?>
+            <p class="text-sm font-medium text-slate-700"><?= htmlspecialchars($tutorNextSession['CLASS_NAME'], ENT_QUOTES, 'UTF-8') ?></p>
+            <p class="text-xs text-slate-500 mb-3"><?= htmlspecialchars($tutorNextSession['START_TIME'], ENT_QUOTES, 'UTF-8') ?> – <?= htmlspecialchars($tutorNextSession['END_TIME'], ENT_QUOTES, 'UTF-8') ?></p>
+            <a href="/PTE-MANAGEMENT-SYSTEM/attendance/take?session_id=<?= (int)$tutorNextSession['SESSION_ID'] ?>"
+               class="bg-indigo-800 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 text-xs font-medium inline-flex items-center gap-1.5">
+                <i class="ti ti-clipboard-check"></i> Take Attendance
+            </a>
+            <?php endif; ?>
+        </div>
+
+        <!-- Attendance donut -->
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+            <p class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">My Attendance — Last 30 Days</p>
+            <?php if ($tutorTotalAttendance === 0): ?>
+            <p class="text-slate-400 text-sm text-center py-10">No attendance data yet.</p>
+            <?php else: ?>
+            <div class="relative h-32 mb-3">
+                <canvas id="chart-tutor-attendance-donut"></canvas>
+                <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <p class="text-xl font-bold text-slate-800"><?= $tutorAttendanceRate ?>%</p>
+                    <p class="text-xs text-slate-400">present</p>
+                </div>
+            </div>
+            <div class="space-y-1 text-xs">
+                <div class="flex items-center justify-between">
+                    <span class="flex items-center gap-1.5 text-slate-600"><span class="w-2 h-2 rounded-full bg-green-500"></span>Present</span>
+                    <span class="font-medium text-slate-800"><?= $tutorAttendance['PRESENT'] ?></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="flex items-center gap-1.5 text-slate-600"><span class="w-2 h-2 rounded-full bg-red-500"></span>Absent</span>
+                    <span class="font-medium text-slate-800"><?= $tutorAttendance['ABSENT'] ?></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="flex items-center gap-1.5 text-slate-600"><span class="w-2 h-2 rounded-full bg-yellow-500"></span>Late</span>
+                    <span class="font-medium text-slate-800"><?= $tutorAttendance['LATE'] ?></span>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Upcoming sessions -->
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+            <p class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Upcoming Sessions</p>
+            <?php if (empty($tutorUpcoming)): ?>
+            <p class="text-slate-400 text-sm text-center py-6">Nothing scheduled ahead.</p>
+            <?php else: ?>
+            <div class="space-y-2.5 max-h-40 overflow-y-auto">
+                <?php foreach ($tutorUpcoming as $s): ?>
+                <div class="flex items-center justify-between text-sm">
+                    <div class="min-w-0">
+                        <p class="text-slate-700 font-medium truncate"><?= htmlspecialchars($s['CLASS_NAME'], ENT_QUOTES, 'UTF-8') ?></p>
+                        <p class="text-xs text-slate-400"><?= date('d M', strtotime($s['SESSION_DATE'])) ?></p>
+                    </div>
+                    <span class="text-xs text-slate-500 shrink-0 ml-2"><?= htmlspecialchars($s['START_TIME'], ENT_QUOTES, 'UTF-8') ?></span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- This month's session calendar -->
+    <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <p class="text-sm font-medium text-slate-500 uppercase tracking-wide"><?= date('F Y') ?> — My Sessions</p>
+            <div class="flex items-center gap-3 text-xs">
+                <span class="flex items-center gap-1.5 text-slate-600"><span class="w-2 h-2 rounded-full bg-yellow-500"></span>Scheduled</span>
+                <span class="flex items-center gap-1.5 text-slate-600"><span class="w-2 h-2 rounded-full bg-green-500"></span>Completed</span>
+                <span class="flex items-center gap-1.5 text-slate-600"><span class="w-2 h-2 rounded-full bg-red-500"></span>Cancelled</span>
+            </div>
+        </div>
+        <?php
+            $calDotColors = [
+                'SCHEDULED' => 'bg-yellow-500',
+                'COMPLETED' => 'bg-green-500',
+                'CANCELLED' => 'bg-red-500',
+            ];
+            $calToday      = (int)date('j');
+            $calDaysInMonth = (int)date('t');
+            $calFirstDow    = (int)date('N', strtotime(date('Y-m') . '-01')); // 1 (Mon) .. 7 (Sun)
+            $calLeadingBlanks = $calFirstDow - 1;
+        ?>
+        <div class="grid grid-cols-7 gap-1.5 text-center text-xs text-slate-400 uppercase tracking-wide mb-2">
+            <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
+        </div>
+        <div class="grid grid-cols-7 gap-1.5">
+            <?php for ($i = 0; $i < $calLeadingBlanks; $i++): ?>
+            <div></div>
+            <?php endfor; ?>
+
+            <?php for ($day = 1; $day <= $calDaysInMonth; $day++):
+                $daySessions = $tutorMonthSessions[$day] ?? [];
+                $isToday     = $day === $calToday;
+            ?>
+            <div class="border rounded-lg p-1.5 min-h-16 sm:min-h-20 <?= $isToday ? 'border-indigo-400 bg-indigo-50' : 'border-slate-100' ?>">
+                <p class="text-xs <?= $isToday ? 'text-indigo-700 font-semibold' : 'text-slate-500' ?>"><?= $day ?></p>
+                <?php if (!empty($daySessions)): ?>
+                <div class="mt-1 space-y-0.5">
+                    <?php foreach (array_slice($daySessions, 0, 2) as $ds): ?>
+                    <a href="/PTE-MANAGEMENT-SYSTEM/sessions/show?id=<?= (int)$ds['SESSION_ID'] ?>"
+                       class="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-white/60"
+                       title="<?= htmlspecialchars($ds['CLASS_NAME'] . ' · ' . $ds['START_TIME'] . '–' . $ds['END_TIME'], ENT_QUOTES, 'UTF-8') ?>">
+                        <span class="w-1.5 h-1.5 rounded-full shrink-0 <?= $calDotColors[$ds['STATUS']] ?? 'bg-slate-300' ?>"></span>
+                        <span class="text-[10px] text-slate-600 truncate"><?= htmlspecialchars($ds['CLASS_NAME'], ENT_QUOTES, 'UTF-8') ?></span>
+                    </a>
+                    <?php endforeach; ?>
+                    <?php if (count($daySessions) > 2): ?>
+                    <p class="text-[10px] text-slate-400 px-1">+<?= count($daySessions) - 2 ?> more</p>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endfor; ?>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var animDuration = reduceMotion ? 0 : 600;
+        Chart.defaults.font.family = "system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+        Chart.defaults.color = '#64748b';
+
+        var tutorAttEl = document.getElementById('chart-tutor-attendance-donut');
+        if (tutorAttEl) {
+            new Chart(tutorAttEl, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Present', 'Absent', 'Late'],
+                    datasets: [{
+                        data: [<?= (int)$tutorAttendance['PRESENT'] ?>, <?= (int)$tutorAttendance['ABSENT'] ?>, <?= (int)$tutorAttendance['LATE'] ?>],
+                        backgroundColor: ['#22c55e', '#ef4444', '#eab308'],
+                        borderWidth: 0,
+                        cutout: '75%',
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: { duration: animDuration, easing: 'easeOutQuart' },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#ffffff', titleColor: '#1e293b', bodyColor: '#1e293b',
+                            borderColor: '#e2e8f0', borderWidth: 1, padding: 10, cornerRadius: 8,
+                        }
+                    }
+                }
+            });
+        }
+    })();
+    </script>
+    <?php endif; ?>
 
     <?php endif; ?>
 </main>

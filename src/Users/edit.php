@@ -37,33 +37,36 @@ try {
         exit;
     }
 
-    // Fetch profile fields
+    // Fetch profile fields — check both profile tables directly, since a
+    // user can hold an ADMIN_PROFILE and a TUTOR_PROFILE row at once,
+    // independent of their single-valued USERS.ROLE.
     $department = '';
     $qualification = '';
     $specialisation = '';
 
-    if ($user['ROLE'] === 'ADMIN') {
-        $profStmt = oci_parse($conn, 'SELECT department FROM ADMIN_PROFILE WHERE user_id = :id');
-        oci_bind_by_name($profStmt, ':id', $id);
-        oci_execute($profStmt);
-        $prof = oci_fetch_assoc($profStmt);
-        oci_free_statement($profStmt);
-        $department = $prof['DEPARTMENT'] ?? '';
-    } elseif ($user['ROLE'] === 'TUTOR') {
-        $profStmt = oci_parse($conn, 'SELECT qualification, specialisation FROM TUTOR_PROFILE WHERE user_id = :id');
-        oci_bind_by_name($profStmt, ':id', $id);
-        oci_execute($profStmt);
-        $prof = oci_fetch_assoc($profStmt);
-        oci_free_statement($profStmt);
-        $qualification  = $prof['QUALIFICATION']  ?? '';
-        $specialisation = $prof['SPECIALISATION'] ?? '';
-    }
+    $adminProfStmt = oci_parse($conn, 'SELECT department FROM ADMIN_PROFILE WHERE user_id = :id');
+    oci_bind_by_name($adminProfStmt, ':id', $id);
+    oci_execute($adminProfStmt);
+    $adminProf = oci_fetch_assoc($adminProfStmt);
+    oci_free_statement($adminProfStmt);
+    $existingIsAdmin = (bool)$adminProf;
+    $department = $adminProf['DEPARTMENT'] ?? '';
+
+    $tutorProfStmt = oci_parse($conn, 'SELECT qualification, specialisation FROM TUTOR_PROFILE WHERE user_id = :id');
+    oci_bind_by_name($tutorProfStmt, ':id', $id);
+    oci_execute($tutorProfStmt);
+    $tutorProf = oci_fetch_assoc($tutorProfStmt);
+    oci_free_statement($tutorProfStmt);
+    $existingIsTutor = (bool)$tutorProf;
+    $qualification  = $tutorProf['QUALIFICATION']  ?? '';
+    $specialisation = $tutorProf['SPECIALISATION'] ?? '';
 
     $input = [
         'fullname'       => $user['FULLNAME'],
         'email'          => $user['EMAIL'],
         'phone'          => $user['PHONE'] ?? '',
-        'role'           => $user['ROLE'],
+        'is_admin'       => $existingIsAdmin,
+        'is_tutor'       => $existingIsTutor,
         'is_active'      => $user['IS_ACTIVE'],
         'password'       => '',
         'department'     => $department,
@@ -75,7 +78,8 @@ try {
         $input['fullname']       = trim($_POST['fullname'] ?? '');
         $input['email']          = trim($_POST['email'] ?? '');
         $input['phone']          = trim($_POST['phone'] ?? '');
-        $input['role']           = $_POST['role'] ?? '';
+        $input['is_admin']       = isset($_POST['is_admin']);
+        $input['is_tutor']       = isset($_POST['is_tutor']);
         $input['is_active']      = isset($_POST['is_active']) ? 1 : 0;
         $input['password']       = $_POST['password'] ?? '';
         $input['department']     = trim($_POST['department'] ?? '');
@@ -86,7 +90,7 @@ try {
         if ($input['fullname'] === '') $errors['fullname'] = 'Full name is required.';
         if ($input['email'] === '')    $errors['email'] = 'Email is required.';
         elseif (!filter_var($input['email'], FILTER_VALIDATE_EMAIL)) $errors['email'] = 'Invalid email address.';
-        if (!in_array($input['role'], ['ADMIN', 'TUTOR'])) $errors['role'] = 'Role must be Admin or Tutor.';
+        if (!$input['is_admin'] && !$input['is_tutor']) $errors['role'] = 'Select at least one role: Admin or Tutor.';
         if ($input['password'] !== '' && strlen($input['password']) < 8) $errors['password'] = 'Password must be at least 8 characters.';
         if ($input['password'] !== '' && $input['password'] !== $confirm) $errors['password_confirm'] = 'Passwords do not match.';
 
@@ -102,6 +106,11 @@ try {
             if ($cnt > 0) {
                 $errors['email'] = 'That email address is already in use.';
             } else {
+                // ROLE is single-valued and drives route-access guards;
+                // Admin takes priority as the more privileged role when
+                // both boxes are checked.
+                $primaryRole = $input['is_admin'] ? 'ADMIN' : 'TUTOR';
+
                 if ($input['password'] !== '') {
                     $hash    = password_hash($input['password'], PASSWORD_BCRYPT);
                     $updSql  = 'UPDATE USERS SET fullname = :fullname, email = :email, phone = :phone,
@@ -118,29 +127,48 @@ try {
                 oci_bind_by_name($updStmt, ':fullname', $input['fullname']);
                 oci_bind_by_name($updStmt, ':email',    $input['email']);
                 oci_bind_by_name($updStmt, ':phone',    $input['phone']);
-                oci_bind_by_name($updStmt, ':role',     $input['role']);
+                oci_bind_by_name($updStmt, ':role',     $primaryRole);
                 oci_bind_by_name($updStmt, ':active',   $input['is_active']);
                 oci_bind_by_name($updStmt, ':id',       $id);
                 oci_execute($updStmt);
                 oci_free_statement($updStmt);
 
-                // Update profile table
-                if ($input['role'] === 'ADMIN') {
-                    $dept    = $input['department'] !== '' ? $input['department'] : null;
-                    $pSql    = 'UPDATE ADMIN_PROFILE SET department = :dept WHERE user_id = :id';
-                    $pStmt   = oci_parse($conn, $pSql);
+                // Reconcile ADMIN_PROFILE: insert/update if checked, remove if unchecked
+                if ($input['is_admin']) {
+                    $dept = $input['department'] !== '' ? $input['department'] : null;
+                    if ($existingIsAdmin) {
+                        $pStmt = oci_parse($conn, 'UPDATE ADMIN_PROFILE SET department = :dept WHERE user_id = :id');
+                    } else {
+                        $pStmt = oci_parse($conn, 'INSERT INTO ADMIN_PROFILE (user_id, department) VALUES (:id, :dept)');
+                    }
                     oci_bind_by_name($pStmt, ':dept', $dept);
                     oci_bind_by_name($pStmt, ':id',   $id);
                     oci_execute($pStmt);
                     oci_free_statement($pStmt);
-                } elseif ($input['role'] === 'TUTOR') {
-                    $qual  = $input['qualification']  !== '' ? $input['qualification']  : null;
-                    $spec  = $input['specialisation'] !== '' ? $input['specialisation'] : null;
-                    $pSql  = 'UPDATE TUTOR_PROFILE SET qualification = :qual, specialisation = :spec WHERE user_id = :id';
-                    $pStmt = oci_parse($conn, $pSql);
+                } elseif ($existingIsAdmin) {
+                    $pStmt = oci_parse($conn, 'DELETE FROM ADMIN_PROFILE WHERE user_id = :id');
+                    oci_bind_by_name($pStmt, ':id', $id);
+                    oci_execute($pStmt);
+                    oci_free_statement($pStmt);
+                }
+
+                // Reconcile TUTOR_PROFILE: insert/update if checked, remove if unchecked
+                if ($input['is_tutor']) {
+                    $qual = $input['qualification']  !== '' ? $input['qualification']  : null;
+                    $spec = $input['specialisation'] !== '' ? $input['specialisation'] : null;
+                    if ($existingIsTutor) {
+                        $pStmt = oci_parse($conn, 'UPDATE TUTOR_PROFILE SET qualification = :qual, specialisation = :spec WHERE user_id = :id');
+                    } else {
+                        $pStmt = oci_parse($conn, 'INSERT INTO TUTOR_PROFILE (user_id, qualification, specialisation) VALUES (:id, :qual, :spec)');
+                    }
                     oci_bind_by_name($pStmt, ':qual', $qual);
                     oci_bind_by_name($pStmt, ':spec', $spec);
                     oci_bind_by_name($pStmt, ':id',   $id);
+                    oci_execute($pStmt);
+                    oci_free_statement($pStmt);
+                } elseif ($existingIsTutor) {
+                    $pStmt = oci_parse($conn, 'DELETE FROM TUTOR_PROFILE WHERE user_id = :id');
+                    oci_bind_by_name($pStmt, ':id', $id);
                     oci_execute($pStmt);
                     oci_free_statement($pStmt);
                 }
@@ -225,13 +253,21 @@ require_once '../../views/layout/sidebar.php';
 
             <div class="mb-4">
                 <label class="block text-sm font-medium text-slate-700 mb-1">Role <span class="text-red-500">*</span></label>
-                <select name="role" id="role-select"
-                        class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'role') ?>"
-                        aria-invalid="<?= isset($errors['role']) ? 'true' : 'false' ?>"
-                        onchange="toggleRoleFields(this.value)">
-                    <option value="ADMIN" <?= $input['role'] === 'ADMIN' ? 'selected' : '' ?>>Admin</option>
-                    <option value="TUTOR" <?= $input['role'] === 'TUTOR' ? 'selected' : '' ?>>Tutor</option>
-                </select>
+                <div class="flex gap-4">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="is_admin" id="is-admin-check" value="1" <?= $input['is_admin'] ? 'checked' : '' ?>
+                               class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                               onchange="toggleRoleFields()">
+                        <span class="text-sm text-slate-700">Admin</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="is_tutor" id="is-tutor-check" value="1" <?= $input['is_tutor'] ? 'checked' : '' ?>
+                               class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                               onchange="toggleRoleFields()">
+                        <span class="text-sm text-slate-700">Tutor</span>
+                    </label>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Select one or both — a user can be both an admin and a tutor.</p>
                 <?php if (isset($errors['role'])): ?>
                 <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['role'], ENT_QUOTES, 'UTF-8') ?></p>
                 <?php endif; ?>
@@ -309,11 +345,13 @@ require_once '../../views/layout/sidebar.php';
 </main>
 
 <script>
-function toggleRoleFields(role) {
-    document.getElementById('admin-fields').classList.toggle('hidden', role !== 'ADMIN');
-    document.getElementById('tutor-fields').classList.toggle('hidden', role !== 'TUTOR');
+function toggleRoleFields() {
+    var isAdmin = document.getElementById('is-admin-check').checked;
+    var isTutor = document.getElementById('is-tutor-check').checked;
+    document.getElementById('admin-fields').classList.toggle('hidden', !isAdmin);
+    document.getElementById('tutor-fields').classList.toggle('hidden', !isTutor);
 }
-toggleRoleFields('<?= htmlspecialchars($input['role'], ENT_QUOTES, 'UTF-8') ?>');
+toggleRoleFields();
 </script>
 
 <?php require_once '../../views/layout/footer.php'; ?>

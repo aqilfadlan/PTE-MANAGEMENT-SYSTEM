@@ -23,9 +23,9 @@ try {
 
     // Classes dropdown — tutors see only own classes
     if ($role === 'TUTOR') {
-        $clsSql  = "SELECT class_id, name FROM CLASS WHERE user_id = :uid AND status = 'ACTIVE' ORDER BY name";
+        $clsSql  = "SELECT class_id, name FROM CLASS WHERE user_id = :tutor_id AND status = 'ACTIVE' ORDER BY name";
         $clsStmt = oci_parse($conn, $clsSql);
-        oci_bind_by_name($clsStmt, ':uid', $userId);
+        oci_bind_by_name($clsStmt, ':tutor_id', $userId);
     } else {
         $clsSql  = "SELECT class_id, name FROM CLASS WHERE status = 'ACTIVE' ORDER BY name";
         $clsStmt = oci_parse($conn, $clsSql);
@@ -41,8 +41,8 @@ try {
 
     // Tutors can only see sessions for their own classes
     if ($role === 'TUTOR') {
-        $where .= ' AND cs.user_id = :uid';
-        $params[':uid'] = $userId;
+        $where .= ' AND cs.user_id = :tutor_id';
+        $params[':tutor_id'] = $userId;
     }
     if ($classId > 0) {
         $where .= ' AND cs.class_id = :class_id';
@@ -131,10 +131,16 @@ require_once '../../views/layout/sidebar.php';
             <p class="text-slate-500 text-sm mt-1">All class sessions</p>
         </div>
         <?php if (in_array($role, ['OWNER', 'ADMIN'])): ?>
-        <a href="/PTE-MANAGEMENT-SYSTEM/schedule/generate"
-           class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
-            <i class="ti ti-calendar-plus"></i> Generate Sessions
-        </a>
+        <div class="flex gap-2">
+            <a href="/PTE-MANAGEMENT-SYSTEM/sessions/create"
+               class="bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg hover:bg-indigo-200 inline-flex items-center gap-2 text-sm">
+                <i class="ti ti-plus"></i> Add Session
+            </a>
+            <a href="/PTE-MANAGEMENT-SYSTEM/schedule/generate"
+               class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
+                <i class="ti ti-calendar-plus"></i> Generate Sessions
+            </a>
+        </div>
         <?php endif; ?>
     </div>
 

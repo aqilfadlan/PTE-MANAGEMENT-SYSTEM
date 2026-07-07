@@ -103,7 +103,7 @@ if (isset($_SESSION['user_id'])) {
             <i class="ti ti-calendar-event text-base"></i> Sessions
         </a>
 
-        <a href="/PTE-MANAGEMENT-SYSTEM/attendance/<?= $currentRole === 'TUTOR' ? 'take' : 'report' ?>"
+        <a href="/PTE-MANAGEMENT-SYSTEM/attendance<?= $currentRole === 'TUTOR' ? '' : '/report' ?>"
            class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-inset transition <?= isActive('/attendance') ?>">
             <i class="ti ti-clipboard-check text-base"></i> Attendance
         </a>

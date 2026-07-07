@@ -38,8 +38,10 @@ $routes = [
     '/schedule/generate'     => 'src/Schedule/generate.php',
 
     '/sessions'              => 'src/Sessions/index.php',
+    '/sessions/create'       => 'src/Sessions/create.php',
     '/sessions/show'         => 'src/Sessions/show.php',
 
+    '/attendance'            => 'src/Attendance/index.php',
     '/attendance/take'       => 'src/Attendance/take.php',
     '/attendance/report'     => 'src/Attendance/report.php',
 
@@ -52,6 +54,8 @@ $routes = [
 
     '/payments/record'       => 'src/Payments/record.php',
     '/payments/history'      => 'src/Payments/history.php',
+
+    '/receipts/view'         => 'src/Receipts/view.php',
 ];
 
 $basePath = '/PTE-MANAGEMENT-SYSTEM';
