@@ -30,25 +30,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn = getConnection();
 
             if ($action === 'edit' && $editId > 0) {
-                $sql  = 'UPDATE SUBJECT SET name = :name, code = :code, description = :desc
+                $sql  = 'UPDATE SUBJECT SET name = :name, code = :code, description = :sdesc
                          WHERE subject_id = :id';
                 $stmt = oci_parse($conn, $sql);
-                oci_bind_by_name($stmt, ':name', $name);
-                oci_bind_by_name($stmt, ':code', $code);
-                oci_bind_by_name($stmt, ':desc', $desc);
-                oci_bind_by_name($stmt, ':id',   $editId);
-                oci_execute($stmt);
+                oci_bind_by_name($stmt, ':name',  $name);
+                oci_bind_by_name($stmt, ':code',  $code);
+                oci_bind_by_name($stmt, ':sdesc', $desc);
+                oci_bind_by_name($stmt, ':id',    $editId);
+                if (!oci_execute($stmt, OCI_NO_AUTO_COMMIT)) {
+                    $e = oci_error($stmt);
+                    oci_free_statement($stmt);
+                    oci_close($conn);
+                    throw new \RuntimeException('Oracle execute failed: ' . $e['message']);
+                }
                 oci_commit($conn);
                 oci_free_statement($stmt);
                 $_SESSION['flash_success'] = 'Subject updated successfully.';
             } else {
                 $sql  = 'INSERT INTO SUBJECT (name, code, description)
-                         VALUES (:name, :code, :desc)';
+                         VALUES (:name, :code, :sdesc)';
                 $stmt = oci_parse($conn, $sql);
-                oci_bind_by_name($stmt, ':name', $name);
-                oci_bind_by_name($stmt, ':code', $code);
-                oci_bind_by_name($stmt, ':desc', $desc);
-                oci_execute($stmt);
+                oci_bind_by_name($stmt, ':name',  $name);
+                oci_bind_by_name($stmt, ':code',  $code);
+                oci_bind_by_name($stmt, ':sdesc', $desc);
+                if (!oci_execute($stmt, OCI_NO_AUTO_COMMIT)) {
+                    $e = oci_error($stmt);
+                    oci_free_statement($stmt);
+                    oci_close($conn);
+                    throw new \RuntimeException('Oracle execute failed: ' . $e['message']);
+                }
                 oci_commit($conn);
                 oci_free_statement($stmt);
                 $_SESSION['flash_success'] = 'Subject added successfully.';
@@ -89,7 +99,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             $sql  = 'DELETE FROM SUBJECT WHERE subject_id = :id';
             $stmt = oci_parse($conn, $sql);
             oci_bind_by_name($stmt, ':id', $delId);
-            oci_execute($stmt);
+            if (!oci_execute($stmt, OCI_NO_AUTO_COMMIT)) {
+                $e = oci_error($stmt);
+                oci_free_statement($stmt);
+                oci_close($conn);
+                throw new \RuntimeException('Oracle execute failed: ' . $e['message']);
+            }
             oci_commit($conn);
             oci_free_statement($stmt);
             oci_close($conn);

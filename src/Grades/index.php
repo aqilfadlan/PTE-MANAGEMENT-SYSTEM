@@ -30,25 +30,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn = getConnection();
 
             if ($action === 'edit' && $editId > 0) {
-                $sql  = 'UPDATE GRADE SET name = :name, grade_level = :level, description = :desc
+                $sql  = 'UPDATE GRADE SET name = :name, grade_level = :glevel, description = :gdesc
                          WHERE grade_id = :id';
                 $stmt = oci_parse($conn, $sql);
-                oci_bind_by_name($stmt, ':name',  $name);
-                oci_bind_by_name($stmt, ':level', $level);
-                oci_bind_by_name($stmt, ':desc',  $desc);
-                oci_bind_by_name($stmt, ':id',    $editId);
-                oci_execute($stmt);
+                oci_bind_by_name($stmt, ':name',   $name);
+                oci_bind_by_name($stmt, ':glevel', $level);
+                oci_bind_by_name($stmt, ':gdesc',  $desc);
+                oci_bind_by_name($stmt, ':id',     $editId);
+                if (!oci_execute($stmt, OCI_NO_AUTO_COMMIT)) {
+                    $e = oci_error($stmt);
+                    oci_free_statement($stmt);
+                    oci_close($conn);
+                    throw new \RuntimeException('Oracle execute failed: ' . $e['message']);
+                }
                 oci_commit($conn);
                 oci_free_statement($stmt);
                 $_SESSION['flash_success'] = 'Grade updated successfully.';
             } else {
                 $sql  = 'INSERT INTO GRADE (name, grade_level, description)
-                         VALUES (:name, :level, :desc)';
+                         VALUES (:name, :glevel, :gdesc)';
                 $stmt = oci_parse($conn, $sql);
-                oci_bind_by_name($stmt, ':name',  $name);
-                oci_bind_by_name($stmt, ':level', $level);
-                oci_bind_by_name($stmt, ':desc',  $desc);
-                oci_execute($stmt);
+                oci_bind_by_name($stmt, ':name',   $name);
+                oci_bind_by_name($stmt, ':glevel', $level);
+                oci_bind_by_name($stmt, ':gdesc',  $desc);
+                if (!oci_execute($stmt, OCI_NO_AUTO_COMMIT)) {
+                    $e = oci_error($stmt);
+                    oci_free_statement($stmt);
+                    oci_close($conn);
+                    throw new \RuntimeException('Oracle execute failed: ' . $e['message']);
+                }
                 oci_commit($conn);
                 oci_free_statement($stmt);
                 $_SESSION['flash_success'] = 'Grade added successfully.';
@@ -72,7 +82,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             $sql  = 'DELETE FROM GRADE WHERE grade_id = :id';
             $stmt = oci_parse($conn, $sql);
             oci_bind_by_name($stmt, ':id', $delId);
-            oci_execute($stmt);
+            if (!oci_execute($stmt, OCI_NO_AUTO_COMMIT)) {
+                $e = oci_error($stmt);
+                oci_free_statement($stmt);
+                oci_close($conn);
+                throw new \RuntimeException('Oracle execute failed: ' . $e['message']);
+            }
             oci_commit($conn);
             oci_free_statement($stmt);
             oci_close($conn);

@@ -149,10 +149,14 @@ require_once '../../views/layout/sidebar.php';
                            class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 text-xs font-medium mr-3">
                             <i class="ti ti-pencil"></i> Edit
                         </a>
+                        <?php if ((int)$p['STUDENT_COUNT'] === 0): ?>
                         <button onclick="confirmDelete(<?= $p['PARENT_ID'] ?>, '<?= htmlspecialchars($p['FULLNAME'], ENT_QUOTES, 'UTF-8') ?>')"
                                 class="inline-flex items-center gap-1 text-red-500 hover:text-red-700 text-xs font-medium">
                             <i class="ti ti-trash"></i> Delete
                         </button>
+                        <?php else: ?>
+                        <span class="text-xs text-slate-300 cursor-not-allowed" title="Has linked students">Delete</span>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>
