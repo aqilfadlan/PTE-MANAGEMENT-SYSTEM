@@ -93,10 +93,16 @@ require_once '../../views/layout/sidebar.php';
             <h1 class="text-xl font-semibold text-slate-800">Students</h1>
             <p class="text-slate-500 text-sm mt-1">Manage student records</p>
         </div>
-        <a href="/PTE-MANAGEMENT-SYSTEM/students/create"
-           class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 inline-flex items-center gap-2 text-sm">
-            <i class="ti ti-plus"></i> Add Student
-        </a>
+        <div class="flex items-center gap-2">
+            <a href="/PTE-MANAGEMENT-SYSTEM/students/export?<?= http_build_query(['search' => $search, 'grade' => $grade, 'status' => $status]) ?>"
+               class="bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg hover:bg-indigo-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 inline-flex items-center gap-2 text-sm">
+                <i class="ti ti-file-spreadsheet"></i> Export
+            </a>
+            <a href="/PTE-MANAGEMENT-SYSTEM/students/create"
+               class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 inline-flex items-center gap-2 text-sm">
+                <i class="ti ti-plus"></i> Add Student
+            </a>
+        </div>
     </div>
 
     <?php require_once '../../views/partials/flash.php'; ?>

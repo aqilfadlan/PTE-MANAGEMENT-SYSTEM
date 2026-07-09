@@ -65,6 +65,32 @@ try {
         $params[':date_to'] = $dateTo;
     }
 
+    // Same scope (class/date/tutor) but WITHOUT the status filter — a
+    // student's attendance rate needs every status to compute correctly,
+    // even if the table below is currently filtered to just "Absent".
+    $rateWhere  = '1=1';
+    $rateParams = [];
+    if ($role === 'TUTOR') {
+        $rateWhere .= ' AND cs.user_id = :tutor_id';
+        $rateParams[':tutor_id'] = $userId;
+    }
+    if ($classId > 0) {
+        $rateWhere .= ' AND c.class_id = :class_id';
+        $rateParams[':class_id'] = $classId;
+    }
+    if ($studentId > 0) {
+        $rateWhere .= ' AND sa.student_id = :student_id';
+        $rateParams[':student_id'] = $studentId;
+    }
+    if ($dateFrom !== '') {
+        $rateWhere .= " AND cs.session_date >= TO_DATE(:date_from, 'YYYY-MM-DD')";
+        $rateParams[':date_from'] = $dateFrom;
+    }
+    if ($dateTo !== '') {
+        $rateWhere .= " AND cs.session_date <= TO_DATE(:date_to, 'YYYY-MM-DD')";
+        $rateParams[':date_to'] = $dateTo;
+    }
+
     // Summary counts (regardless of pagination)
     $sumSql  = "SELECT sa.status, COUNT(*) AS cnt
                 FROM   STUDENT_ATTENDANCE sa
@@ -82,6 +108,33 @@ try {
     }
     oci_free_statement($sumStmt);
     $totalAtt = $summary['PRESENT'] + $summary['ABSENT'] + $summary['LATE'];
+
+    // Low attendance flag — students attending (Present + Late) fewer than
+    // 80% of their sessions within the same class/date scope as the page.
+    // HAVING filters on the aggregate itself (attended vs total session
+    // count), which WHERE cannot do since COUNT()/SUM() don't exist yet
+    // at the point WHERE is evaluated.
+    $lowAttSql = "SELECT st.student_id, st.fullname AS student_name, c.name AS class_name,
+                         COUNT(*) AS total_sessions,
+                         SUM(CASE WHEN sa.status IN ('PRESENT', 'LATE') THEN 1 ELSE 0 END) AS attended_count
+                  FROM   STUDENT_ATTENDANCE sa
+                  JOIN   CLASS_SESSION      cs ON cs.session_id = sa.session_id
+                  JOIN   CLASS              c  ON c.class_id    = cs.class_id
+                  JOIN   STUDENT            st ON st.student_id = sa.student_id
+                  WHERE  $rateWhere
+                  GROUP  BY st.student_id, st.fullname, c.name
+                  HAVING SUM(CASE WHEN sa.status IN ('PRESENT', 'LATE') THEN 1 ELSE 0 END) < 0.8 * COUNT(*)
+                  ORDER  BY st.fullname";
+    $lowAttStmt = oci_parse($conn, $lowAttSql);
+    foreach ($rateParams as $k => &$v) oci_bind_by_name($lowAttStmt, $k, $v);
+    unset($v);
+    oci_execute($lowAttStmt);
+    $lowAttendance = [];
+    while ($r = oci_fetch_assoc($lowAttStmt)) {
+        $r['RATE'] = $r['TOTAL_SESSIONS'] > 0 ? round($r['ATTENDED_COUNT'] / $r['TOTAL_SESSIONS'] * 100) : 0;
+        $lowAttendance[] = $r;
+    }
+    oci_free_statement($lowAttStmt);
 
     // Count for pagination
     $countSql  = "SELECT COUNT(*) AS total
@@ -135,6 +188,7 @@ try {
 } catch (\RuntimeException $e) {
     $records  = []; $classes = []; $total = 0; $totalPages = 1;
     $summary  = ['PRESENT' => 0, 'ABSENT' => 0, 'LATE' => 0]; $totalAtt = 0;
+    $lowAttendance = [];
 }
 
 $attColors = [
@@ -154,6 +208,10 @@ require_once '../../views/layout/sidebar.php';
             <h1 class="text-xl font-semibold text-slate-800">Attendance Report</h1>
             <p class="text-slate-500 text-sm mt-1">View attendance across sessions</p>
         </div>
+        <a href="/PTE-MANAGEMENT-SYSTEM/attendance/export?<?= http_build_query(['class_id' => $classId, 'student_id' => $studentId, 'att_status' => $statusFilter, 'date_from' => $dateFrom, 'date_to' => $dateTo]) ?>"
+           class="bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg hover:bg-indigo-200 inline-flex items-center gap-2 text-sm">
+            <i class="ti ti-file-spreadsheet"></i> Export
+        </a>
     </div>
 
     <?php require_once '../../views/partials/flash.php'; ?>
@@ -186,6 +244,43 @@ require_once '../../views/layout/sidebar.php';
             <?php endif; ?>
         </div>
     </div>
+
+    <!-- Low attendance flags -->
+    <?php if (!empty($lowAttendance)): ?>
+    <div class="bg-orange-50 border border-orange-200 rounded-lg mb-6 overflow-hidden">
+        <div class="px-5 py-3 border-b border-orange-200 flex items-center gap-2">
+            <i class="ti ti-alert-triangle text-orange-600"></i>
+            <h2 class="text-sm font-semibold text-orange-800">Low Attendance — below 80%</h2>
+            <span class="text-xs text-orange-600">(<?= count($lowAttendance) ?> student<?= count($lowAttendance) === 1 ? '' : 's' ?>, within current filters)</span>
+        </div>
+        <table class="w-full text-sm">
+            <thead class="bg-orange-100/50">
+                <tr>
+                    <th class="text-left px-5 py-2 text-xs font-medium text-orange-700 uppercase tracking-wide">Student</th>
+                    <th class="text-left px-5 py-2 text-xs font-medium text-orange-700 uppercase tracking-wide">Class</th>
+                    <th class="text-left px-5 py-2 text-xs font-medium text-orange-700 uppercase tracking-wide">Attended</th>
+                    <th class="text-left px-5 py-2 text-xs font-medium text-orange-700 uppercase tracking-wide">Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($lowAttendance as $la): ?>
+                <tr class="border-t border-orange-100">
+                    <td class="px-5 py-2 font-medium text-slate-800">
+                        <a href="/PTE-MANAGEMENT-SYSTEM/students/show?id=<?= (int)$la['STUDENT_ID'] ?>" class="hover:text-indigo-700">
+                            <?= htmlspecialchars($la['STUDENT_NAME'], ENT_QUOTES, 'UTF-8') ?>
+                        </a>
+                    </td>
+                    <td class="px-5 py-2 text-slate-600"><?= htmlspecialchars($la['CLASS_NAME'], ENT_QUOTES, 'UTF-8') ?></td>
+                    <td class="px-5 py-2 text-slate-600"><?= (int)$la['ATTENDED_COUNT'] ?> / <?= (int)$la['TOTAL_SESSIONS'] ?></td>
+                    <td class="px-5 py-2">
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700"><?= $la['RATE'] ?>%</span>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
 
     <!-- Filters -->
     <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-4 mb-4">

@@ -9,6 +9,7 @@ $routes = [
     '/reset-password'        => 'src/Auth/reset-password.php',
 
     '/dashboard'             => 'src/Dashboard/index.php',
+    '/dashboard/demo-alive'  => 'src/Dashboard/demo-alive.php',
 
     '/users'                 => 'src/Users/index.php',
     '/users/create'          => 'src/Users/create.php',
@@ -24,16 +25,19 @@ $routes = [
     '/students/delete'       => 'src/Students/delete.php',
     '/students/show'         => 'src/Students/show.php',
     '/students/enrol'        => 'src/Students/enrol.php',
+    '/students/export'       => 'src/Students/export.php',
 
     '/parents'               => 'src/Parents/index.php',
     '/parents/create'        => 'src/Parents/create.php',
     '/parents/edit'          => 'src/Parents/edit.php',
     '/parents/delete'        => 'src/Parents/delete.php',
+    '/parents/export'        => 'src/Parents/export.php',
 
     '/classes'               => 'src/Classes/index.php',
     '/classes/create'        => 'src/Classes/create.php',
     '/classes/edit'          => 'src/Classes/edit.php',
     '/classes/show'          => 'src/Classes/show.php',
+    '/classes/export'        => 'src/Classes/export.php',
 
     '/schedule/generate'     => 'src/Schedule/generate.php',
 
@@ -44,6 +48,7 @@ $routes = [
     '/attendance'            => 'src/Attendance/index.php',
     '/attendance/take'       => 'src/Attendance/take.php',
     '/attendance/report'     => 'src/Attendance/report.php',
+    '/attendance/export'     => 'src/Attendance/export.php',
 
     '/subjects'              => 'src/Subjects/index.php',
     '/grades'                => 'src/Grades/index.php',
@@ -51,9 +56,11 @@ $routes = [
     '/invoices'              => 'src/Invoices/index.php',
     '/invoices/generate'     => 'src/Invoices/generate.php',
     '/invoices/show'         => 'src/Invoices/show.php',
+    '/invoices/export'       => 'src/Invoices/export.php',
 
     '/payments/record'       => 'src/Payments/record.php',
     '/payments/history'      => 'src/Payments/history.php',
+    '/payments/export'       => 'src/Payments/export.php',
 
     '/receipts/view'         => 'src/Receipts/view.php',
 

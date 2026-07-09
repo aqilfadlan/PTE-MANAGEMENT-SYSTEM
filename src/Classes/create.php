@@ -168,7 +168,7 @@ require_once '../../views/layout/sidebar.php';
 
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Tutor <span class="text-red-500">*</span></label>
-                <select name="user_id" required
+                <select name="user_id" required data-searchable data-placeholder="Search tutor by name…"
                         aria-invalid="<?= isset($errors['user_id']) ? 'true' : 'false' ?>"
                         class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'user_id') ?>">
                     <option value="">Select tutor…</option>

@@ -190,7 +190,8 @@ require_once '../../views/layout/sidebar.php';
 
             <div class="mb-4">
                 <label class="block text-sm font-medium text-slate-700 mb-1">Parent / Guardian <span class="text-red-500">*</span></label>
-                <select name="parent_id" class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'parent_id') ?>"
+                <select name="parent_id" data-searchable data-placeholder="Search parent by name or phone…"
+                        class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'parent_id') ?>"
                         aria-invalid="<?= isset($errors['parent_id']) ? 'true' : 'false' ?>">
                     <?php foreach ($parents as $p): ?>
                     <option value="<?= $p['PARENT_ID'] ?>" <?= (int)$input['parent_id'] === (int)$p['PARENT_ID'] ? 'selected' : '' ?>>

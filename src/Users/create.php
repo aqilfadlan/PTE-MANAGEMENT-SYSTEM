@@ -22,7 +22,23 @@ $input  = [
     'department'     => '',
     'qualification'  => '',
     'specialisation' => '',
+    'supervisor_id'  => '',
 ];
+
+// Supervisor options are limited to Owner/Admin users — tutors are never supervisors.
+$supervisors = [];
+try {
+    $supConn = getConnection();
+    $supStmt = oci_parse($supConn, "SELECT user_id, fullname, role FROM USERS WHERE role IN ('OWNER', 'ADMIN') AND is_active = 1 ORDER BY fullname");
+    oci_execute($supStmt);
+    while ($row = oci_fetch_assoc($supStmt)) {
+        $supervisors[] = $row;
+    }
+    oci_free_statement($supStmt);
+    oci_close($supConn);
+} catch (\RuntimeException $e) {
+    $supervisors = [];
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input['fullname']       = trim($_POST['fullname'] ?? '');
@@ -34,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input['department']     = trim($_POST['department'] ?? '');
     $input['qualification']  = trim($_POST['qualification'] ?? '');
     $input['specialisation'] = trim($_POST['specialisation'] ?? '');
+    $input['supervisor_id']  = trim($_POST['supervisor_id'] ?? '');
     $confirm                 = $_POST['password_confirm'] ?? '';
 
     if ($input['fullname'] === '') $errors['fullname'] = 'Full name is required.';
@@ -42,6 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$input['is_admin'] && !$input['is_tutor']) $errors['role'] = 'Select at least one role: Admin or Tutor.';
     if (strlen($input['password']) < 8) $errors['password'] = 'Password must be at least 8 characters.';
     elseif ($input['password'] !== $confirm) $errors['password_confirm'] = 'Passwords do not match.';
+    if ($input['supervisor_id'] !== '' && !in_array((int)$input['supervisor_id'], array_map('intval', array_column($supervisors, 'USER_ID')), true)) {
+        $errors['supervisor_id'] = 'Invalid supervisor selected.';
+    }
 
     if (empty($errors)) {
         try {
@@ -64,15 +84,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // privileged of the two. The profile tables below are what
                 // actually determine which dashboard(s) they see.
                 $primaryRole = $input['is_admin'] ? 'ADMIN' : 'TUTOR';
+                $supervisorId = $input['supervisor_id'] !== '' ? (int)$input['supervisor_id'] : null;
 
-                $sql  = 'INSERT INTO USERS (fullname, email, phone, password_hash, role)
-                         VALUES (:fullname, :email, :phone, :hash, :role)';
+                $sql  = 'INSERT INTO USERS (fullname, email, phone, password_hash, role, supervisor_id)
+                         VALUES (:fullname, :email, :phone, :hash, :role, :supervisor_id)';
                 $stmt = oci_parse($conn, $sql);
-                oci_bind_by_name($stmt, ':fullname', $input['fullname']);
-                oci_bind_by_name($stmt, ':email',    $input['email']);
-                oci_bind_by_name($stmt, ':phone',    $input['phone']);
-                oci_bind_by_name($stmt, ':hash',     $hash);
-                oci_bind_by_name($stmt, ':role',     $primaryRole);
+                oci_bind_by_name($stmt, ':fullname',      $input['fullname']);
+                oci_bind_by_name($stmt, ':email',         $input['email']);
+                oci_bind_by_name($stmt, ':phone',         $input['phone']);
+                oci_bind_by_name($stmt, ':hash',          $hash);
+                oci_bind_by_name($stmt, ':role',          $primaryRole);
+                oci_bind_by_name($stmt, ':supervisor_id', $supervisorId);
                 oci_execute($stmt);
                 oci_free_statement($stmt);
 
@@ -202,6 +224,22 @@ require_once '../../views/layout/sidebar.php';
                 <p class="text-xs text-slate-400 mt-1">Select one or both — a user can be both an admin and a tutor.</p>
                 <?php if (isset($errors['role'])): ?>
                 <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['role'], ENT_QUOTES, 'UTF-8') ?></p>
+                <?php endif; ?>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Supervisor</label>
+                <select name="supervisor_id"
+                        class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'supervisor_id') ?>">
+                    <option value="">— No supervisor —</option>
+                    <?php foreach ($supervisors as $sup): ?>
+                    <option value="<?= (int)$sup['USER_ID'] ?>" <?= (string)$input['supervisor_id'] === (string)$sup['USER_ID'] ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($sup['FULLNAME'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($sup['ROLE'], ENT_QUOTES, 'UTF-8') ?>)
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+                <?php if (isset($errors['supervisor_id'])): ?>
+                <p class="text-xs text-red-600 mt-1"><?= htmlspecialchars($errors['supervisor_id'], ENT_QUOTES, 'UTF-8') ?></p>
                 <?php endif; ?>
             </div>
 

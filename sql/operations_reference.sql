@@ -10,9 +10,7 @@
 --   SELECT, INSERT, UPDATE, DELETE, JOIN, GROUP BY, HAVING,
 --   Subquery, Aggregate Function, ORDER BY
 --
--- Result: 9 of 10 operations are used in the app today.
--- HAVING is NOT used anywhere in src/ — see note at the bottom
--- of this file for a syllabus-compliant example instead.
+-- Result: all 10 operations are used in the app today.
 -- ============================================================
 
 
@@ -106,9 +104,10 @@ ORDER  BY c.name;
 
 -- ------------------------------------------------------------
 -- 6. GROUP BY
--- Source: src/Classes/index.php (same query as above — the
--- GROUP BY clause is required because of the COUNT(cs.student_id)
--- aggregate alongside non-aggregated columns)
+-- Source: src/Classes/index.php (same query as #5 — the GROUP BY
+-- clause is required because of the COUNT(cs.student_id)
+-- aggregate alongside non-aggregated columns). Shown here in full
+-- again so this section is a complete, runnable query on its own.
 -- ------------------------------------------------------------
 -- What this does: collapses the many CLASS_STUDENT rows joined
 -- onto each class down to one output row per class, so that
@@ -118,37 +117,60 @@ ORDER  BY c.name;
 -- etc.) must appear here too — that's an Oracle rule: any column
 -- not wrapped in an aggregate function has to be part of the
 -- grouping key.
+SELECT c.class_id, c.name, c.fee, c.max_students, c.status,
+       s.name      AS subject_name,
+       g.name      AS grade_name,
+       u.fullname  AS tutor_name,
+       COUNT(cs.student_id) AS enrolled_count
+FROM   CLASS   c
+JOIN   SUBJECT s  ON s.subject_id = c.subject_id
+JOIN   GRADE   g  ON g.grade_id   = c.grade_id
+JOIN   USERS   u  ON u.user_id    = c.user_id
+LEFT   JOIN CLASS_STUDENT cs ON cs.class_id = c.class_id
+WHERE  c.status = :status
 GROUP  BY c.class_id, c.name, c.fee, c.max_students, c.status,
-          s.name, g.name, u.fullname;
+          s.name, g.name, u.fullname
+ORDER  BY c.name;
 
 
 -- ------------------------------------------------------------
--- 7. HAVING  —  NOT USED IN THIS APPLICATION
--- Searched the entire src/ tree (all oci_parse() SQL strings)
--- for the HAVING keyword: zero matches. The app filters grouped
--- results using WHERE (before grouping) or correlated subqueries
--- instead, so HAVING never came up naturally in the codebase.
+-- 7. HAVING
+-- Source: src/Attendance/report.php (low-attendance flag — students
+-- attending fewer than 80% of their sessions within the current
+-- class/date filter scope)
+-- ------------------------------------------------------------
+-- What this does: groups STUDENT_ATTENDANCE rows by student (and
+-- class, since a student's rate is tracked per class), turning many
+-- individual attendance rows into one summary row per student with
+-- a total session count and an "attended" count (Present + Late
+-- both count as attended — only Absent counts against the student).
+-- HAVING then throws away every group whose attended count is NOT
+-- below 80% of their total session count — i.e. it filters on the
+-- *aggregate result*, after grouping.
 --
--- Example below is written in the same style/conventions as the
--- rest of the project (syllabus-compliant, UPPERCASE keywords,
--- aliased tables) to show what a HAVING clause would look like
--- if the system needed "classes with more than 5 students
--- enrolled" — but it is NOT copied from any src/ file.
--- ------------------------------------------------------------
--- What this does: first groups CLASS_STUDENT rows by class and
--- counts enrolled students per class (same idea as #6), then
--- HAVING throws away any group whose count is 5 or below —
--- i.e. it filters on the *aggregate result*, after grouping.
--- This is the key difference from WHERE, which can only filter
--- individual rows *before* they're grouped; WHERE has no way to
--- say "keep only groups where COUNT(...) > 5" because COUNT
--- doesn't exist yet at the point WHERE is evaluated.
-SELECT c.class_id, c.name, COUNT(cst.student_id) AS enrolled_count
-FROM   CLASS c
-JOIN   CLASS_STUDENT cst ON cst.class_id = c.class_id
-GROUP  BY c.class_id, c.name
-HAVING COUNT(cst.student_id) > 5
-ORDER  BY enrolled_count DESC;
+-- This is the key difference from WHERE: WHERE can only filter
+-- individual STUDENT_ATTENDANCE rows *before* they're grouped, so
+-- it has no way to say "keep only students where attended_count <
+-- 0.8 * total_sessions" — SUM() and COUNT() don't exist yet at the
+-- point WHERE is evaluated. Only HAVING can compare one aggregate
+-- (the attended count) against another (0.8 * the total count) in
+-- the same query.
+--
+-- The 80% threshold is expressed as "< 0.8 * COUNT(*)" rather than
+-- as a separate percentage column so the whole comparison stays a
+-- single aggregate expression Oracle can evaluate directly — no
+-- window functions or CTEs needed, both of which are out of syllabus
+-- scope anyway.
+SELECT st.student_id, st.fullname AS student_name, c.name AS class_name,
+       COUNT(*) AS total_sessions,
+       SUM(CASE WHEN sa.status IN ('PRESENT', 'LATE') THEN 1 ELSE 0 END) AS attended_count
+FROM   STUDENT_ATTENDANCE sa
+JOIN   CLASS_SESSION cs ON cs.session_id = sa.session_id
+JOIN   CLASS c ON c.class_id = cs.class_id
+JOIN   STUDENT st ON st.student_id = sa.student_id
+GROUP  BY st.student_id, st.fullname, c.name
+HAVING SUM(CASE WHEN sa.status IN ('PRESENT', 'LATE') THEN 1 ELSE 0 END) < 0.8 * COUNT(*)
+ORDER  BY st.fullname;
 
 
 -- ------------------------------------------------------------
@@ -208,11 +230,17 @@ WHERE  TO_CHAR(pay.payment_date, 'YYYY-MM') = TO_CHAR(SYSDATE, 'YYYY-MM');
 
 -- ------------------------------------------------------------
 -- 10. ORDER BY
--- Source: src/Grades/index.php (grade list ordered by level)
+-- Source: src/Grades/index.php (grade list ordered by level —
+-- same query as #8's Subquery example, shown here in full again
+-- so this section is a complete, runnable query on its own)
 -- ------------------------------------------------------------
 -- What this does: sorts the grade list by grade_level ascending
 -- (the default direction), so grades always display in their
 -- natural teaching order — Darjah 1, Darjah 2, ... Tingkatan 5 —
 -- rather than in whatever order Oracle happens to store/return
 -- the rows in.
+SELECT g.grade_id, g.name, g.grade_level, g.description,
+       (SELECT COUNT(*) FROM STUDENT s WHERE s.grade_id = g.grade_id) AS student_count,
+       (SELECT COUNT(*) FROM CLASS   c WHERE c.grade_id = g.grade_id) AS class_count
+FROM   GRADE g
 ORDER  BY g.grade_level;

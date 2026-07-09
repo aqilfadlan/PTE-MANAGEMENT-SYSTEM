@@ -194,18 +194,16 @@ require_once '../../views/layout/sidebar.php';
               onsubmit="this.querySelector('button[type=submit]').disabled = true; this.querySelector('button[type=submit]').innerHTML = '<i class=\'ti ti-loader-2 animate-spin\'></i> Saving…';">
 
             <div class="flex items-center gap-4 mb-6">
-                <?php if ($hasPhoto): ?>
-                <img src="/PTE-MANAGEMENT-SYSTEM/users/avatar?id=<?= $id ?>&t=<?= time() ?>" alt=""
-                     class="w-16 h-16 rounded-full object-cover border border-slate-200">
-                <?php else: ?>
-                <div class="w-16 h-16 rounded-full bg-indigo-100 text-indigo-800 flex items-center justify-center text-xl font-semibold border border-slate-200">
+                <img id="photo-preview-img" src="/PTE-MANAGEMENT-SYSTEM/users/avatar?id=<?= $id ?>&t=<?= time() ?>" alt=""
+                     class="w-16 h-16 rounded-full object-cover border border-slate-200 <?= $hasPhoto ? '' : 'hidden' ?>">
+                <div id="photo-preview-fallback"
+                     class="w-16 h-16 rounded-full bg-indigo-100 text-indigo-800 flex items-center justify-center text-xl font-semibold border border-slate-200 <?= $hasPhoto ? 'hidden' : '' ?>">
                     <?= htmlspecialchars(strtoupper(substr($input['fullname'], 0, 1)), ENT_QUOTES, 'UTF-8') ?>
                 </div>
-                <?php endif; ?>
                 <div>
                     <label class="inline-flex items-center gap-2 bg-indigo-100 text-indigo-800 px-3 py-1.5 rounded-lg hover:bg-indigo-200 focus-within:ring-2 focus-within:ring-indigo-500 text-sm font-medium cursor-pointer">
                         <i class="ti ti-camera"></i> Change Photo
-                        <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="sr-only">
+                        <input type="file" name="photo" id="photo-input" accept="image/jpeg,image/png,image/webp" class="sr-only" onchange="previewPhoto(this)">
                     </label>
                     <p class="text-xs text-slate-400 mt-1">JPEG, PNG, or WebP. Max 2 MB.</p>
                     <?php if (isset($errors['photo'])): ?>
@@ -213,6 +211,21 @@ require_once '../../views/layout/sidebar.php';
                     <?php endif; ?>
                 </div>
             </div>
+
+            <script>
+            function previewPhoto(input) {
+                if (!input.files || !input.files[0]) return;
+                var reader = new FileReader();
+                reader.onload = function (e) {
+                    var img = document.getElementById('photo-preview-img');
+                    var fallback = document.getElementById('photo-preview-fallback');
+                    img.src = e.target.result;
+                    img.classList.remove('hidden');
+                    fallback.classList.add('hidden');
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+            </script>
 
             <div class="mb-4">
                 <label class="block text-sm font-medium text-slate-700 mb-1">Full Name <span class="text-red-500">*</span></label>

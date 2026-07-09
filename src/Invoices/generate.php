@@ -276,7 +276,7 @@ require_once '../../views/layout/sidebar.php';
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Parent <span class="text-slate-400 font-normal">(optional)</span></label>
-                    <select name="parent_id"
+                    <select name="parent_id" data-searchable data-placeholder="Search parent by name…"
                             class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'parent_id') ?>">
                         <option value="0">All eligible parents</option>
                         <?php foreach ($parentList as $p): ?>

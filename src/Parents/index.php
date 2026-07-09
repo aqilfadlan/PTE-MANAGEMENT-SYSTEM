@@ -78,10 +78,16 @@ require_once '../../views/layout/sidebar.php';
             <h1 class="text-xl font-semibold text-slate-800">Parents</h1>
             <p class="text-slate-500 text-sm mt-1">Manage parent / guardian records</p>
         </div>
-        <a href="/PTE-MANAGEMENT-SYSTEM/parents/create"
-           class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
-            <i class="ti ti-plus"></i> Add Parent
-        </a>
+        <div class="flex items-center gap-2">
+            <a href="/PTE-MANAGEMENT-SYSTEM/parents/export?<?= http_build_query(['search' => $search]) ?>"
+               class="bg-indigo-100 text-indigo-800 px-4 py-2 rounded-lg hover:bg-indigo-200 inline-flex items-center gap-2 text-sm">
+                <i class="ti ti-file-spreadsheet"></i> Export
+            </a>
+            <a href="/PTE-MANAGEMENT-SYSTEM/parents/create"
+               class="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 inline-flex items-center gap-2 text-sm">
+                <i class="ti ti-plus"></i> Add Parent
+            </a>
+        </div>
     </div>
 
     <?php require_once '../../views/partials/flash.php'; ?>

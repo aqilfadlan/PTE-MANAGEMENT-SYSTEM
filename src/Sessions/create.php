@@ -155,7 +155,7 @@ require_once '../../views/layout/sidebar.php';
               onsubmit="this.querySelector('button[type=submit]').disabled = true; this.querySelector('button[type=submit]').innerHTML = '<i class=\'ti ti-loader-2 animate-spin\'></i> Creating…';">
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Class <span class="text-red-500">*</span></label>
-                <select name="class_id" required
+                <select name="class_id" required data-searchable data-placeholder="Search class by name, subject, or grade…"
                         aria-invalid="<?= isset($errors['class_id']) ? 'true' : 'false' ?>"
                         class="border rounded-lg px-3 py-2 w-full text-sm <?= fieldRing($errors, 'class_id') ?>">
                     <option value="">Select class…</option>
