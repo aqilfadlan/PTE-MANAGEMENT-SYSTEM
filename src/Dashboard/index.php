@@ -199,6 +199,123 @@ if ($role === 'OWNER') {
         while ($r = oci_fetch_assoc($dualStmt)) $dualTrend[] = $r;
         oci_free_statement($dualStmt);
 
+        // Activity feed — centre-wide, newest first. UNION ALL across
+        // enrolments, payments, new students, and absences; each branch
+        // selects the same 4 columns so they can stack into one feed.
+        $feedSql = "SELECT * FROM (
+                        SELECT 'ENROLMENT' AS kind,
+                               st.fullname || ' enrolled in ' || c.name AS headline,
+                               g.name AS detail,
+                               TO_CHAR(cst.enrolled_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                        FROM   CLASS_STUDENT cst
+                        JOIN   STUDENT st ON st.student_id = cst.student_id
+                        JOIN   CLASS   c  ON c.class_id    = cst.class_id
+                        JOIN   GRADE   g  ON g.grade_id    = st.grade_id
+
+                        UNION ALL
+
+                        SELECT 'PAYMENT' AS kind,
+                               p.fullname || ' paid RM' || TO_CHAR(pay.amount_paid, 'FM999,999.00') AS headline,
+                               'Invoice #' || TO_CHAR(i.invoice_id) AS detail,
+                               TO_CHAR(pay.created_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                        FROM   PAYMENT pay
+                        JOIN   INVOICE i ON i.invoice_id = pay.invoice_id
+                        JOIN   PARENT  p ON p.parent_id  = i.parent_id
+
+                        UNION ALL
+
+                        SELECT 'NEW_STUDENT' AS kind,
+                               st.fullname || ' was added as a new student' AS headline,
+                               g.name AS detail,
+                               TO_CHAR(st.created_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                        FROM   STUDENT st
+                        JOIN   GRADE   g ON g.grade_id = st.grade_id
+
+                        UNION ALL
+
+                        SELECT 'ABSENT' AS kind,
+                               st.fullname || ' was marked absent' AS headline,
+                               c.name AS detail,
+                               TO_CHAR(sa.created_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                        FROM   STUDENT_ATTENDANCE sa
+                        JOIN   STUDENT       st ON st.student_id = sa.student_id
+                        JOIN   CLASS_SESSION cs ON cs.session_id = sa.session_id
+                        JOIN   CLASS         c  ON c.class_id    = cs.class_id
+                        WHERE  sa.status = 'ABSENT'
+                    )
+                    ORDER  BY occurred_at DESC
+                    FETCH FIRST 8 ROWS ONLY";
+        $feedStmt = oci_parse($conn, $feedSql);
+        oci_execute($feedStmt);
+        $activityFeed = [];
+        while ($r = oci_fetch_assoc($feedStmt)) $activityFeed[] = $r;
+        oci_free_statement($feedStmt);
+
+        // Alerts — centre-wide "needs attention" list (Owner/Admin only,
+        // since it surfaces invoice/financial data Tutors aren't granted).
+        $alerts = [];
+
+        $overdueSql = "SELECT COUNT(*) AS cnt, NVL(SUM(i.total_amount), 0) AS total
+                        FROM   INVOICE i
+                        WHERE  i.status IN ('UNPAID', 'OVERDUE')
+                        AND    i.due_date < TRUNC(SYSDATE)";
+        $overdueStmt = oci_parse($conn, $overdueSql);
+        oci_execute($overdueStmt);
+        $overdueRow = oci_fetch_assoc($overdueStmt);
+        oci_free_statement($overdueStmt);
+        if ((int)$overdueRow['CNT'] > 0) {
+            $alerts[] = [
+                'icon' => 'ti-file-invoice', 'color' => 'orange',
+                'text' => (int)$overdueRow['CNT'] . ' invoice' . ((int)$overdueRow['CNT'] === 1 ? '' : 's') . ' overdue — RM ' . number_format((float)$overdueRow['TOTAL'], 2) . ' outstanding',
+                'link' => '/PTE-MANAGEMENT-SYSTEM/invoices?status=OVERDUE',
+            ];
+        }
+
+        $lowAttSql = "SELECT COUNT(*) AS cnt FROM (
+                        SELECT sa.student_id
+                        FROM   STUDENT_ATTENDANCE sa
+                        JOIN   CLASS_SESSION cs ON cs.session_id = sa.session_id
+                        WHERE  cs.session_date >= TRUNC(SYSDATE) - 30
+                        GROUP  BY sa.student_id
+                        HAVING SUM(CASE WHEN sa.status IN ('PRESENT', 'LATE') THEN 1 ELSE 0 END) < 0.8 * COUNT(*)
+                      )";
+        $lowAttStmt = oci_parse($conn, $lowAttSql);
+        oci_execute($lowAttStmt);
+        $lowAttCnt = (int)oci_fetch_assoc($lowAttStmt)['CNT'];
+        oci_free_statement($lowAttStmt);
+        if ($lowAttCnt > 0) {
+            $alerts[] = [
+                'icon' => 'ti-alert-triangle', 'color' => 'red',
+                'text' => $lowAttCnt . ' student' . ($lowAttCnt === 1 ? '' : 's') . ' below 80% attendance in the last 30 days',
+                'link' => '/PTE-MANAGEMENT-SYSTEM/attendance/report',
+            ];
+        }
+
+        $idleTutorSql = "SELECT COUNT(*) AS cnt FROM (
+                            SELECT u.user_id
+                            FROM   USERS u
+                            JOIN   CLASS c ON c.user_id = u.user_id AND c.status = 'ACTIVE'
+                            WHERE  u.role = 'TUTOR'
+                            AND    u.user_id NOT IN (
+                                SELECT cs.user_id FROM CLASS_SESSION cs
+                                WHERE  cs.session_date BETWEEN TRUNC(SYSDATE) AND TRUNC(SYSDATE) + 7
+                                AND    cs.status = 'SCHEDULED'
+                                AND    cs.user_id IS NOT NULL
+                            )
+                            GROUP BY u.user_id
+                          )";
+        $idleStmt = oci_parse($conn, $idleTutorSql);
+        oci_execute($idleStmt);
+        $idleTutorCnt = (int)oci_fetch_assoc($idleStmt)['CNT'];
+        oci_free_statement($idleStmt);
+        if ($idleTutorCnt > 0) {
+            $alerts[] = [
+                'icon' => 'ti-calendar-off', 'color' => 'yellow',
+                'text' => $idleTutorCnt . ' tutor' . ($idleTutorCnt === 1 ? '' : 's') . ' with no sessions in the next 7 days',
+                'link' => '/PTE-MANAGEMENT-SYSTEM/sessions',
+            ];
+        }
+
         oci_close($conn);
     } catch (\RuntimeException $e) {
         $kpi = ['ACTIVE_STUDENTS' => 0, 'ACTIVE_CLASSES' => 0, 'TOTAL_TUTORS' => 0, 'TOTAL_ADMINS' => 0];
@@ -214,6 +331,8 @@ if ($role === 'OWNER') {
         $avgCapacity = 0;
         $todaySessions = []; $nextSession = null;
         $dualTrend = [];
+        $activityFeed = [];
+        $alerts = [];
     }
 }
 
@@ -292,6 +411,120 @@ if ($role === 'ADMIN' || $role === 'TUTOR') {
             $adminTodaySessions = [];
             while ($r = oci_fetch_assoc($adminTodayStmt)) $adminTodaySessions[] = $r;
             oci_free_statement($adminTodayStmt);
+
+            // Activity feed + alerts — centre-wide, same shape as the Owner
+            // dashboard (Admin has full operational parity minus Users/Reports).
+            $adminFeedSql = "SELECT * FROM (
+                                SELECT 'ENROLMENT' AS kind,
+                                       st.fullname || ' enrolled in ' || c.name AS headline,
+                                       g.name AS detail,
+                                       TO_CHAR(cst.enrolled_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                                FROM   CLASS_STUDENT cst
+                                JOIN   STUDENT st ON st.student_id = cst.student_id
+                                JOIN   CLASS   c  ON c.class_id    = cst.class_id
+                                JOIN   GRADE   g  ON g.grade_id    = st.grade_id
+
+                                UNION ALL
+
+                                SELECT 'PAYMENT' AS kind,
+                                       p.fullname || ' paid RM' || TO_CHAR(pay.amount_paid, 'FM999,999.00') AS headline,
+                                       'Invoice #' || TO_CHAR(i.invoice_id) AS detail,
+                                       TO_CHAR(pay.created_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                                FROM   PAYMENT pay
+                                JOIN   INVOICE i ON i.invoice_id = pay.invoice_id
+                                JOIN   PARENT  p ON p.parent_id  = i.parent_id
+
+                                UNION ALL
+
+                                SELECT 'NEW_STUDENT' AS kind,
+                                       st.fullname || ' was added as a new student' AS headline,
+                                       g.name AS detail,
+                                       TO_CHAR(st.created_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                                FROM   STUDENT st
+                                JOIN   GRADE   g ON g.grade_id = st.grade_id
+
+                                UNION ALL
+
+                                SELECT 'ABSENT' AS kind,
+                                       st.fullname || ' was marked absent' AS headline,
+                                       c.name AS detail,
+                                       TO_CHAR(sa.created_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                                FROM   STUDENT_ATTENDANCE sa
+                                JOIN   STUDENT       st ON st.student_id = sa.student_id
+                                JOIN   CLASS_SESSION cs ON cs.session_id = sa.session_id
+                                JOIN   CLASS         c  ON c.class_id    = cs.class_id
+                                WHERE  sa.status = 'ABSENT'
+                            )
+                            ORDER  BY occurred_at DESC
+                            FETCH FIRST 8 ROWS ONLY";
+            $adminFeedStmt = oci_parse($conn, $adminFeedSql);
+            oci_execute($adminFeedStmt);
+            $adminActivityFeed = [];
+            while ($r = oci_fetch_assoc($adminFeedStmt)) $adminActivityFeed[] = $r;
+            oci_free_statement($adminFeedStmt);
+
+            $adminAlerts = [];
+
+            $adminOverdueSql = "SELECT COUNT(*) AS cnt, NVL(SUM(i.total_amount), 0) AS total
+                                FROM   INVOICE i
+                                WHERE  i.status IN ('UNPAID', 'OVERDUE')
+                                AND    i.due_date < TRUNC(SYSDATE)";
+            $adminOverdueStmt = oci_parse($conn, $adminOverdueSql);
+            oci_execute($adminOverdueStmt);
+            $adminOverdueRow = oci_fetch_assoc($adminOverdueStmt);
+            oci_free_statement($adminOverdueStmt);
+            if ((int)$adminOverdueRow['CNT'] > 0) {
+                $adminAlerts[] = [
+                    'icon' => 'ti-file-invoice', 'color' => 'orange',
+                    'text' => (int)$adminOverdueRow['CNT'] . ' invoice' . ((int)$adminOverdueRow['CNT'] === 1 ? '' : 's') . ' overdue — RM ' . number_format((float)$adminOverdueRow['TOTAL'], 2) . ' outstanding',
+                    'link' => '/PTE-MANAGEMENT-SYSTEM/invoices?status=OVERDUE',
+                ];
+            }
+
+            $adminLowAttSql = "SELECT COUNT(*) AS cnt FROM (
+                                SELECT sa.student_id
+                                FROM   STUDENT_ATTENDANCE sa
+                                JOIN   CLASS_SESSION cs ON cs.session_id = sa.session_id
+                                WHERE  cs.session_date >= TRUNC(SYSDATE) - 30
+                                GROUP  BY sa.student_id
+                                HAVING SUM(CASE WHEN sa.status IN ('PRESENT', 'LATE') THEN 1 ELSE 0 END) < 0.8 * COUNT(*)
+                              )";
+            $adminLowAttStmt = oci_parse($conn, $adminLowAttSql);
+            oci_execute($adminLowAttStmt);
+            $adminLowAttCnt = (int)oci_fetch_assoc($adminLowAttStmt)['CNT'];
+            oci_free_statement($adminLowAttStmt);
+            if ($adminLowAttCnt > 0) {
+                $adminAlerts[] = [
+                    'icon' => 'ti-alert-triangle', 'color' => 'red',
+                    'text' => $adminLowAttCnt . ' student' . ($adminLowAttCnt === 1 ? '' : 's') . ' below 80% attendance in the last 30 days',
+                    'link' => '/PTE-MANAGEMENT-SYSTEM/attendance/report',
+                ];
+            }
+
+            $adminIdleTutorSql = "SELECT COUNT(*) AS cnt FROM (
+                                    SELECT u.user_id
+                                    FROM   USERS u
+                                    JOIN   CLASS c ON c.user_id = u.user_id AND c.status = 'ACTIVE'
+                                    WHERE  u.role = 'TUTOR'
+                                    AND    u.user_id NOT IN (
+                                        SELECT cs.user_id FROM CLASS_SESSION cs
+                                        WHERE  cs.session_date BETWEEN TRUNC(SYSDATE) AND TRUNC(SYSDATE) + 7
+                                        AND    cs.status = 'SCHEDULED'
+                                        AND    cs.user_id IS NOT NULL
+                                    )
+                                    GROUP BY u.user_id
+                                  )";
+            $adminIdleStmt = oci_parse($conn, $adminIdleTutorSql);
+            oci_execute($adminIdleStmt);
+            $adminIdleTutorCnt = (int)oci_fetch_assoc($adminIdleStmt)['CNT'];
+            oci_free_statement($adminIdleStmt);
+            if ($adminIdleTutorCnt > 0) {
+                $adminAlerts[] = [
+                    'icon' => 'ti-calendar-off', 'color' => 'yellow',
+                    'text' => $adminIdleTutorCnt . ' tutor' . ($adminIdleTutorCnt === 1 ? '' : 's') . ' with no sessions in the next 7 days',
+                    'link' => '/PTE-MANAGEMENT-SYSTEM/sessions',
+                ];
+            }
         }
 
         if ($isTutor) {
@@ -376,6 +609,89 @@ if ($role === 'ADMIN' || $role === 'TUTOR') {
                 $tutorMonthSessions[$day][] = $r;
             }
             oci_free_statement($tutorMonthStmt);
+
+            // Activity feed — scoped to this tutor's own classes only, and
+            // deliberately excludes payments: Tutor has no Invoicing/Payments
+            // access anywhere else in the app, so financial events stay out
+            // of their feed too, not just hidden behind a nav link.
+            $tutorFeedSql = "SELECT * FROM (
+                                SELECT 'ENROLMENT' AS kind,
+                                       st.fullname || ' enrolled in ' || c.name AS headline,
+                                       g.name AS detail,
+                                       TO_CHAR(cst.enrolled_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                                FROM   CLASS_STUDENT cst
+                                JOIN   STUDENT st ON st.student_id = cst.student_id
+                                JOIN   CLASS   c  ON c.class_id    = cst.class_id
+                                JOIN   GRADE   g  ON g.grade_id    = st.grade_id
+                                WHERE  c.user_id = :feed_tutor1
+
+                                UNION ALL
+
+                                SELECT 'ABSENT' AS kind,
+                                       st.fullname || ' was marked absent' AS headline,
+                                       c.name AS detail,
+                                       TO_CHAR(sa.created_at, 'YYYY-MM-DD HH24:MI:SS') AS occurred_at
+                                FROM   STUDENT_ATTENDANCE sa
+                                JOIN   STUDENT       st ON st.student_id = sa.student_id
+                                JOIN   CLASS_SESSION cs ON cs.session_id = sa.session_id
+                                JOIN   CLASS         c  ON c.class_id    = cs.class_id
+                                WHERE  sa.status = 'ABSENT'
+                                AND    c.user_id = :feed_tutor2
+                            )
+                            ORDER  BY occurred_at DESC
+                            FETCH FIRST 8 ROWS ONLY";
+            $tutorFeedStmt = oci_parse($conn, $tutorFeedSql);
+            oci_bind_by_name($tutorFeedStmt, ':feed_tutor1', $userId);
+            oci_bind_by_name($tutorFeedStmt, ':feed_tutor2', $userId);
+            oci_execute($tutorFeedStmt);
+            $tutorActivityFeed = [];
+            while ($r = oci_fetch_assoc($tutorFeedStmt)) $tutorActivityFeed[] = $r;
+            oci_free_statement($tutorFeedStmt);
+
+            // Alerts — self-referential only: this tutor's own low-attendance
+            // students, and whether *they themselves* have no sessions coming
+            // up. No centre-wide invoice/roster data (that's Owner/Admin-only).
+            $tutorAlerts = [];
+
+            $tutorLowAttSql = "SELECT COUNT(*) AS cnt FROM (
+                                SELECT sa.student_id
+                                FROM   STUDENT_ATTENDANCE sa
+                                JOIN   CLASS_SESSION cs ON cs.session_id = sa.session_id
+                                WHERE  cs.session_date >= TRUNC(SYSDATE) - 30
+                                AND    cs.user_id = :low_att_tutor
+                                GROUP  BY sa.student_id
+                                HAVING SUM(CASE WHEN sa.status IN ('PRESENT', 'LATE') THEN 1 ELSE 0 END) < 0.8 * COUNT(*)
+                              )";
+            $tutorLowAttStmt = oci_parse($conn, $tutorLowAttSql);
+            oci_bind_by_name($tutorLowAttStmt, ':low_att_tutor', $userId);
+            oci_execute($tutorLowAttStmt);
+            $tutorLowAttCnt = (int)oci_fetch_assoc($tutorLowAttStmt)['CNT'];
+            oci_free_statement($tutorLowAttStmt);
+            if ($tutorLowAttCnt > 0) {
+                $tutorAlerts[] = [
+                    'icon' => 'ti-alert-triangle', 'color' => 'red',
+                    'text' => $tutorLowAttCnt . ' of your student' . ($tutorLowAttCnt === 1 ? '' : 's') . ' below 80% attendance in the last 30 days',
+                    'link' => '/PTE-MANAGEMENT-SYSTEM/attendance/report',
+                ];
+            }
+
+            $tutorIdleCheckSql = "SELECT COUNT(*) AS cnt
+                                    FROM   CLASS_SESSION cs
+                                    WHERE  cs.user_id = :idle_tutor
+                                    AND    cs.session_date BETWEEN TRUNC(SYSDATE) AND TRUNC(SYSDATE) + 7
+                                    AND    cs.status = 'SCHEDULED'";
+            $tutorIdleStmt = oci_parse($conn, $tutorIdleCheckSql);
+            oci_bind_by_name($tutorIdleStmt, ':idle_tutor', $userId);
+            oci_execute($tutorIdleStmt);
+            $tutorUpcomingCnt = (int)oci_fetch_assoc($tutorIdleStmt)['CNT'];
+            oci_free_statement($tutorIdleStmt);
+            if ($tutorUpcomingCnt === 0 && (int)$tutorKpi['ACTIVE_CLASSES'] > 0) {
+                $tutorAlerts[] = [
+                    'icon' => 'ti-calendar-off', 'color' => 'yellow',
+                    'text' => 'You have no sessions scheduled in the next 7 days',
+                    'link' => '/PTE-MANAGEMENT-SYSTEM/sessions',
+                ];
+            }
         }
 
         oci_close($conn);
@@ -384,13 +700,100 @@ if ($role === 'ADMIN' || $role === 'TUTOR') {
         $adminInvoiceSummary = ['UNPAID' => 0, 'PARTIAL' => 0, 'PAID' => 0, 'OVERDUE' => 0];
         $adminByGrade = [];
         $adminTodaySessions = [];
+        $adminActivityFeed = []; $adminAlerts = [];
         $tutorKpi = ['ACTIVE_CLASSES' => 0, 'TOTAL_STUDENTS' => 0];
         $tutorTodaySessions = []; $tutorNextSession = null;
         $tutorAttendance = ['PRESENT' => 0, 'ABSENT' => 0, 'LATE' => 0];
         $tutorTotalAttendance = 0; $tutorAttendanceRate = 0;
         $tutorUpcoming = [];
+        $tutorActivityFeed = []; $tutorAlerts = [];
         $tutorMonthSessions = [];
     }
+}
+
+$kindMeta = [
+    'ENROLMENT'   => ['icon' => 'ti-user-plus', 'color' => 'indigo'],
+    'PAYMENT'     => ['icon' => 'ti-cash',      'color' => 'green'],
+    'NEW_STUDENT' => ['icon' => 'ti-school',    'color' => 'indigo'],
+    'ABSENT'      => ['icon' => 'ti-calendar-x', 'color' => 'red'],
+];
+
+function dashTimeAgo(string $timestamp): string
+{
+    $diff = time() - strtotime($timestamp);
+    if ($diff < 60) return 'just now';
+    if ($diff < 3600) return floor($diff / 60) . 'm ago';
+    if ($diff < 86400) return floor($diff / 3600) . 'h ago';
+    return floor($diff / 86400) . 'd ago';
+}
+
+function renderAlertsCard(array $alerts): void
+{
+?>
+<div class="reveal bg-white rounded-lg shadow-sm border border-slate-200 p-6 h-96 flex flex-col">
+    <div class="flex items-center justify-between mb-4 shrink-0">
+        <p class="text-sm font-medium text-slate-500 uppercase tracking-wide">Needs Attention</p>
+        <span class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+            <i class="ti ti-bell text-orange-600 text-sm"></i>
+        </span>
+    </div>
+    <?php if (empty($alerts)): ?>
+    <div class="flex-1 flex flex-col items-center justify-center text-center">
+        <i class="ti ti-circle-check text-3xl text-green-500 block mb-2"></i>
+        <p class="text-slate-400 text-sm">All clear — nothing needs attention.</p>
+    </div>
+    <?php else: ?>
+    <div class="space-y-2 overflow-y-auto flex-1 min-h-0">
+        <?php foreach ($alerts as $a): ?>
+        <a href="<?= htmlspecialchars($a['link'], ENT_QUOTES, 'UTF-8') ?>"
+           class="flex items-start gap-3 p-3 rounded-lg border border-<?= $a['color'] ?>-200 bg-<?= $a['color'] ?>-50 hover:bg-<?= $a['color'] ?>-100 transition group">
+            <i class="ti <?= $a['icon'] ?> text-<?= $a['color'] ?>-600 text-lg shrink-0 mt-0.5"></i>
+            <span class="text-sm text-<?= $a['color'] ?>-800 flex-1"><?= htmlspecialchars($a['text'], ENT_QUOTES, 'UTF-8') ?></span>
+            <i class="ti ti-chevron-right text-<?= $a['color'] ?>-400 text-sm shrink-0 mt-0.5 group-hover:translate-x-0.5 transition-transform"></i>
+        </a>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+</div>
+<?php
+}
+
+function renderActivityFeed(array $activity, array $kindMeta): void
+{
+?>
+<div class="reveal bg-white rounded-lg shadow-sm border border-slate-200 p-6 h-96 flex flex-col">
+    <div class="flex items-center justify-between mb-4 shrink-0">
+        <p class="text-sm font-medium text-slate-500 uppercase tracking-wide">Recent Activity</p>
+        <span class="flex items-center gap-1.5 text-xs text-slate-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Live
+        </span>
+    </div>
+    <?php if (empty($activity)): ?>
+    <div class="flex-1 flex items-center justify-center">
+        <p class="text-slate-400 text-sm text-center">No recent activity yet.</p>
+    </div>
+    <?php else: ?>
+    <div class="space-y-0.5 overflow-y-auto flex-1 min-h-0">
+        <?php foreach ($activity as $i => $ev):
+            $meta = $kindMeta[$ev['KIND']] ?? ['icon' => 'ti-dot', 'color' => 'slate'];
+        ?>
+        <div class="flex items-start gap-3 py-2.5 <?= $i < count($activity) - 1 ? 'border-b border-slate-50' : '' ?>">
+            <div class="w-8 h-8 rounded-full bg-<?= $meta['color'] ?>-100 flex items-center justify-center shrink-0">
+                <i class="ti <?= $meta['icon'] ?> text-<?= $meta['color'] ?>-600 text-sm"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+                <p class="text-sm text-slate-700"><?= htmlspecialchars($ev['HEADLINE'], ENT_QUOTES, 'UTF-8') ?></p>
+                <p class="text-xs text-slate-400"><?= htmlspecialchars($ev['DETAIL'], ENT_QUOTES, 'UTF-8') ?></p>
+            </div>
+            <span class="text-xs text-slate-400 shrink-0 whitespace-nowrap" data-timestamp="<?= htmlspecialchars($ev['OCCURRED_AT'], ENT_QUOTES, 'UTF-8') ?>">
+                <?= dashTimeAgo($ev['OCCURRED_AT']) ?>
+            </span>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+</div>
+<?php
 }
 
 $pageTitle = 'Dashboard — PTE Management System';
@@ -497,6 +900,12 @@ require_once '../../views/layout/sidebar.php';
                 <?php endforeach; ?>
             </div>
         </div>
+    </div>
+
+    <!-- Alerts + Activity feed -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="lg:col-span-2"><?php renderActivityFeed($activityFeed, $kindMeta); ?></div>
+        <div class="lg:col-span-1"><?php renderAlertsCard($alerts); ?></div>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
@@ -931,6 +1340,36 @@ require_once '../../views/layout/sidebar.php';
         </div>
     </div>
 
+    <?php if ($isTutor):
+        // Merge alerts rather than picking one side's list: Admin's
+        // centre-wide idle-tutor check filters on USERS.ROLE = 'TUTOR',
+        // which excludes this user once they're provisioned as Admin (the
+        // ROLE column is single-valued and Admin takes priority) — so their
+        // own "no sessions this week" warning would otherwise be silently
+        // dropped. Everything else Admin's queries already return is a
+        // superset of what Tutor's scoped queries would add, so only the
+        // idle-tutor alert needs an explicit merge; the rest reuses Admin's.
+        $mergedAlerts = $adminAlerts;
+        foreach ($tutorAlerts as $ta) {
+            if (str_contains($ta['text'], 'no sessions scheduled')) {
+                $mergedAlerts[] = $ta;
+            }
+        }
+    ?>
+    <!-- Combined Alerts + Activity feed for a user holding both Admin and
+         Tutor profiles — one row instead of duplicating it per section. -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="lg:col-span-2"><?php renderActivityFeed($adminActivityFeed, $kindMeta); ?></div>
+        <div class="lg:col-span-1"><?php renderAlertsCard($mergedAlerts); ?></div>
+    </div>
+    <?php else: ?>
+    <!-- Alerts + Activity feed — only shown here for an Admin-only user. -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="lg:col-span-2"><?php renderActivityFeed($adminActivityFeed, $kindMeta); ?></div>
+        <div class="lg:col-span-1"><?php renderAlertsCard($adminAlerts); ?></div>
+    </div>
+    <?php endif; ?>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <!-- Students by grade -->
         <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
@@ -1098,6 +1537,16 @@ require_once '../../views/layout/sidebar.php';
         </div>
     </div>
 
+    <?php if (!$isAdmin): ?>
+    <!-- Alerts + Activity feed (scoped to this tutor's own classes) — only
+         shown here for a Tutor-only user. Admin+Tutor users get one merged
+         row instead of two separate ones (rendered after both sections). -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div class="lg:col-span-2"><?php renderActivityFeed($tutorActivityFeed, $kindMeta); ?></div>
+        <div class="lg:col-span-1"><?php renderAlertsCard($tutorAlerts); ?></div>
+    </div>
+    <?php endif; ?>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <!-- Next up / today's agenda -->
         <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
@@ -1264,5 +1713,44 @@ require_once '../../views/layout/sidebar.php';
 
     <?php endif; ?>
 </main>
+
+<style>
+@media (prefers-reduced-motion: no-preference) {
+    .reveal {
+        animation: dash-reveal-in 0.5s ease-out both;
+    }
+    @keyframes dash-reveal-in {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+}
+</style>
+
+<script>
+// Re-derive "time ago" client-side every 30s so activity feed timestamps
+// keep counting up without a page reload.
+(function () {
+    var els = document.querySelectorAll('[data-timestamp]');
+    if (!els.length) return;
+
+    function relativeTime(iso) {
+        var then = new Date(iso.replace(' ', 'T')).getTime();
+        var diff = Math.floor((Date.now() - then) / 1000);
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    function tick() {
+        els.forEach(function (el) {
+            var ts = el.getAttribute('data-timestamp');
+            if (ts) el.textContent = relativeTime(ts);
+        });
+    }
+
+    setInterval(tick, 30000);
+})();
+</script>
 
 <?php require_once '../../views/layout/footer.php'; ?>
